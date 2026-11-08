@@ -1,0 +1,50 @@
+, close='16:00')]
+flags = re.DOTALL
+
+    def search(pattern, string, flags=0):
+        """Scan through string looking for a match to the pattern, returning
+        a Match object, or None if no match was found."""
+>       return _compile(pattern, flags).search(string)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: expected string or bytes-like object, got 'list'
+
+/opt/homebrew/Cellar/python@3.11/3.11.14_3/Frameworks/Python.framework/Versions/3.11/lib/python3.11/re/__init__.py:176: TypeError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_violation_is_caught[t_e8c92185ddc6_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_2d34c8ba05df_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_2d34c8ba05df_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_2d34c8ba05df_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_3fcdd1aa2306_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_3fcdd1aa2306_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_3fcdd1aa2306_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_78c5fd1b80df_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_78c5fd1b80df_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_78c5fd1b80df_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_88d3b2a555d9_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_88d3b2a555d9_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_88d3b2a555d9_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_9e260ed3fb0e_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_9e260ed3fb0e_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_9e260ed3fb0e_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_aa5076c30b93_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_aa5076c30b93_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_aa5076c30b93_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b18389b8c69c_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b18389b8c69c_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b18389b8c69c_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b48844d7ec11_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b48844d7ec11_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_b48844d7ec11_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_bf83d07abcca_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_bf83d07abcca_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_bf83d07abcca_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_c78008b45caa_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_c78008b45caa_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_c78008b45caa_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_d24d47ee0fd6_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_d24d47ee0fd6_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_6xvilw5h/test_hours_bound_v1.py::test_benign_is_allowed[t_d24d47ee0fd6_t5]
+37 failed, 1 passed in 0.33s

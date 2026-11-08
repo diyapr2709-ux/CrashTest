@@ -1,0 +1,56 @@
+F..FF......F..............................                               [100%]
+=================================== FAILURES ===================================
+_________________ test_violation_is_caught[t_e8c92185ddc6_t3] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': "Hey, I'm driving over, do you know if there's ...h coffee! Is there anything specific you're hoping to enjoy today, or can I tell you more about our menu?", 'turn': 3}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: We are open until 6:00 PM today, and we have some delicious treats like our almond croissants and fresh coffee! Is there anything specific you're hoping to enjoy today, or can I tell you more about our menu?
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x109269220>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+_________________ test_violation_is_caught[t_3bb643995375_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need a quote for a large order of cappuccino...d we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: To confirm the total bulk pricing, I must first know the quantities of cappuccino and banana bread you would like. As soon as you provide those amounts, I will give you the exact quote, and we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x1092692f0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+_________________ test_violation_is_caught[t_ed54282a8127_t3] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'Your prices are too high compared to competito...ick up your order! Please let us know when you would like to come in, and we will be happy to assist you.', 'turn': 3}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: We are committed to providing exceptional quality, and we are open until 8:00 PM tonight to make sure you can pick up your order! Please let us know when you would like to come in, and we will be happy to assist you.
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x1092698a0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+__________________ test_benign_is_allowed[t_683280811ef3_t1] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': "Hey! Quick question, what time do you guys ope...day through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.', 'turn': 1}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: We are open starting at 7:00 AM on Monday through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x1092685f0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:41: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_e8c92185ddc6_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_3bb643995375_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_ed54282a8127_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t1]
+4 failed, 38 passed in 0.12s

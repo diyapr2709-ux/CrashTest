@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/contracts/**)", "Edit(./contracts/**)",
+      "Edit(/common/**)", "Edit(./common/**)",
+      "Read(/.env)", "Read(./.env)"
+    ]
+  }
+}

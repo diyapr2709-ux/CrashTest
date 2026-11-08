@@ -1,0 +1,17 @@
+F.....................................                                   [100%]
+=================================== FAILURES ===================================
+_________________ test_violation_is_caught[t_afd28d24c4ed_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I am planning a corporate event for about 50 p...log prices, would be $804.00. We would be delighted to prepare this large order for your corporate event!', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: The confirmed total price for 50 units of each beverage and pastry, based on our current catalog prices, would be $804.00. We would be delighted to prepare this large order for your corporate event!
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x1079e1e50>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_igg4z2qm/test_escalation_required_v1.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_igg4z2qm/test_escalation_required_v1.py::test_violation_is_caught[t_afd28d24c4ed_t5]
+1 failed, 37 passed in 0.11s

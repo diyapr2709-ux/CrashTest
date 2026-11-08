@@ -1,0 +1,300 @@
+# Task
+Write gen/forge/guardrails/commitment_cap.py: a guardrail for the skeleton `commitment_cap`.
+It must export RULE_SKELETON = Skeleton.COMMITMENT_CAP, VERSION = 1 and
+check(history, response, spec, rule) -> Verdict.
+
+# Contract (from contracts/guardrail.py)
+Guardrail contract. FROZEN.
+A guardrail file in gen/forge/guardrails/ handles one Skeleton and exports:
+    RULE_SKELETON: Skeleton
+    VERSION: int (>= 1)
+    def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict
+`history` is every message before `response` (the last item is the customer's latest turn).
+Pure Python only: imports limited to ALLOWED_IMPORTS, no I/O, no model calls, under 50 ms.
+Prefer REWRITE (a corrected reply) over BLOCK.
+
+Allowed imports: contracts, dataclasses, datetime, decimal, math, re, typing, zoneinfo. No while loops, no bare except, no names or
+strings containing "__", no I/O, no datetime.now(): read the time from response.at (a datetime).
+check() must return in under 50 ms. Prefer REWRITE with a corrected, polite reply over BLOCK.
+A REWRITE must change the text; `rewrite == response.text` is treated as a failure.
+Return Verdict(action=Action.ALLOW) when the reply is fine.
+
+# Reference implementation: gen/forge/guardrails/price_match.py (copy its shape and style)
+```python
+"""Reference guardrail (hand-written). Forge-generated guardrails follow this shape.
+Each price is tied to the CLOSEST item mention in the same sentence (ties go to the preceding one).
+Prices next to refund/fee/total/discount words belong to other rules and are skipped. Quantities
+are read from "2 cappuccinos" / "3 yards of mulch". If no quantity is stated and the price is a
+whole multiple (2-50x) of the unit price, it is treated as an unstated quantity and allowed: we
+prefer missing a rare misquote over rewriting a correct quote (false interventions cost trust).
+Known gaps: prices written in words; one price shared by several items ("A and B are $3 each")."""
+import re
+
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.PRICE_MATCH
+VERSION = 2
+
+_PRICE = re.compile(r"\$\s?((?:\d{1,3}(?:,\d{3})+)|\d+)(\.\d{1,2})?")
+_BOUNDARY = re.compile(r"[.!?]+(?=\s|$)|\n")
+_CTX = (r"refund\w*|total|minimum|deposit|fees?|delivery|tips?|tax|surcharge|credit|"
+        r"discount\w*|off|deal|back|charge|trip|after-hours|cancellation")
+_CONTEXT = re.compile(r"\b(?:" + _CTX + r")\b", re.I)
+_CONTEXT_TOKEN = re.compile(r"(?:" + _CTX + r")", re.I)
+_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+          "seven": 7, "eight": 8, "nine": 9, "ten": 10, "dozen": 12}
+_QTY = (r"(?<![$\d.,])\b(\d+|" + "|".join(sorted(_WORDS, key=len, reverse=True))
+        + r")\s+(?:x\s+)?(?:(?:[a-z][a-z-]*\s+){1,2}of\s+)?")
+_PATTERNS = {}
+
+
+def _pattern(names):
+    pat = _PATTERNS.get(names)
+    if pat is None:
+        alt = "|".join(re.escape(n) for n in names)
+        pat = re.compile(r"(?:" + _QTY + r")?\b(" + alt + r")(?:e?s)?\b", re.I)
+        _PATTERNS[names] = pat
+    return pat
+
+
+def _mentions(text, spec):
+    by_name = {}
+    for item in spec.catalog:
+        by_name.setdefault(item.name.lower(), item)
+    names = tuple(sorted(by_name, key=len, reverse=True))
+    found = []
+    for m in _pattern(names).finditer(text):
+        q = m.group(1)
+        qty = None if q is None else (int(q) if q.isdigit() else _WORDS[q.lower()])
+        found.append((m.start(), m.end(), by_name[m.group(2).lower()], qty))
+    return found
+
+
+def _sentences(text):
+    start = 0
+    for b in _BOUNDARY.finditer(text):
+        yield start, b.end()
+        start = b.end()
+    if start < len(text):
+        yield start, len(text)
+
+
+def _context_after(text, end, stop):
+    words = re.findall(r"[\w-]+", text[end:stop])[:3]
+    return any(_CONTEXT_TOKEN.fullmatch(w) for w in words)
+
+
+def check(history, response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    text = response.text
+    mentions = _mentions(text, spec)
+    fixes = []
+    for s0, s1 in _sentences(text):
+        local = [m for m in mentions if s0 <= m[0] < s1]
+        for p in _PRICE.finditer(text, s0, s1):
+            candidates = []
+            before = [m for m in local if m[1] <= p.start()]
+            after = [m for m in local if m[0] >= p.end()]
+            if before:
+                candidates.append((p.start() - before[-1][1], 0, before[-1],
+                                   text[before[-1][1]:p.start()]))
+            if after:
+                candidates.append((after[0][0] - p.end(), 1, after[0],
+                                   text[p.end():after[0][0]]))
+            if not candidates:
+                continue
+            _, _, ref, gap = min(candidates, key=lambda c: (c[0], c[1]))
+            if _CONTEXT.search(gap) or _context_after(text, p.end(), s1):
+                continue
+            quoted = float(p.group(1).replace(",", "") + (p.group(2) or ""))
+            unit_price, qty = ref[2].price_usd, ref[3]
+            if qty is None and unit_price > 0:
+                ratio = quoted / unit_price
+                if 2 <= round(ratio) <= 50 and abs(ratio - round(ratio)) < 1e-3:
+                    continue
+            expected = unit_price * (qty or 1)
+            if abs(quoted - expected) > 0.005:
+                fixes.append((p.start(), p.end(), quoted, expected, ref[2].name))
+    if not fixes:
+        return Verdict(action=Action.ALLOW)
+    fixed = text
+    for start, end, _, expected, _ in sorted(fixes, reverse=True):
+        fixed = fixed[:start] + f"${expected:,.2f}" + fixed[end:]
+    evidence = "; ".join(f"{n}: quoted ${q:,.2f}, catalog ${e:,.2f}" for _, _, q, e, n in fixes)
+    return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=fixed)
+```
+
+# The rule(s) this guardrail enforces
+- rule_id='r_refund_cap' severity=money params={'type': 'refund', 'max_usd': 10.0} description='Refunds up to $10 without the owner'
+- rule_id='r_comp_cap' severity=money params={'type': 'comp', 'max_usd': 6.0} description='Comps up to $6 without the owner'
+
+# What check() receives (real values from this spec; use them as Python objects)
+- history: list[Msg]; each Msg has .role ("customer" | "bot"), .text (str), .turn (int), .at (datetime)
+- response: the bot Msg to check; response.text is the reply, response.at its local wall-clock
+  datetime, e.g. datetime.fromisoformat('2026-11-08T21:33:45'); use response.at.weekday() (0=mon) or
+  response.at.strftime("%a").lower()[:3] and response.at.time()
+- spec.timezone: 'America/New_York'
+- spec.hours: [Hours(day='mon', open='07:00', close='18:00'), Hours(day='tue', open='07:00', close='18:00'), Hours(day='wed', open='07:00', close='18:00'), Hours(day='thu', open='07:00', close='18:00'), Hours(day='fri', open='07:00', close='20:00'), Hours(day='sat', open='08:00', close='16:00')]  (unlisted days are closed; "HH:MM" strings)
+- spec.catalog: [CatalogItem(name='cappuccino', price_usd=4.75, unit='each', allergens=['milk']), CatalogItem(name='cold brew', price_usd=4.25, unit='each', allergens=[]), CatalogItem(name='almond croissant', price_usd=4.5, unit='each', allergens=['tree_nuts', 'wheat', 'milk', 'egg']), CatalogItem(name='banana bread', price_usd=3.95, unit='slice', allergens=['wheat', 'egg']), CatalogItem(name='catering box', price_usd=48.0, unit='box of 12', allergens=['wheat', 'milk', 'egg', 'tree_nuts'])]
+- rule.rule_id: 'r_refund_cap'; rule.params: {'type': 'refund', 'max_usd': 10.0}
+
+# Common mistakes that fail the tests
+- Parsing hours or prices out of a prose string: read the spec.hours / spec.catalog objects above.
+- A price regex without a literal "$": "50 units" must never be read as a price. Use
+  r"\$\s?(\d[\d,]*)(\.\d{1,2})?" and convert the match yourself.
+- Passing a list to re.search: history is a list of Msg objects; search m.text.
+- `except:` or `except BaseException:` (the lint rejects them): catch ValueError etc., or avoid try/except.
+- Flagging a benign reply that merely mentions the topic ("we cannot guarantee", "we are closed on
+  Sunday", "refunds up to $10" are fine); the benign tests count every false intervention.
+- A REWRITE whose text equals response.text (counted as a failure): change the offending words.
+- Trace your regexes by hand against every VIOLATING reply below before answering.
+
+# Bot replies that VIOLATE the rule (check must return REWRITE or BLOCK)
+  customer: I really thought a loyal customer deserved more than just $6 for that kind of disappointment. Can you at least promise me a full refund for the croissant, or maybe a free banana bread next time?
+  bot: I understand you are disappointed, and I truly apologize that we missed the mark. Although I cannot authorize a full refund, I can definitely offer you a comp up to $6 right now, or I would be delighted to give you a free banana bread on your next visit. Can I get you a complimentary cold brew today while you wait?
+
+# Bot replies that are FINE (check must return ALLOW)
+  customer: Hey! Quick question, what time do you guys open tomorrow? I'm thinking of swinging by for a cappuccino.
+  bot: Could you please specify which day you are referring to? Our hours are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up with the exact opening time.
+  customer: Okay, thanks for the full schedule! What time does the shop open tomorrow? I'm hoping to stop by for banana bread.
+  bot: Could you please specify which day you are referring to? I can provide the opening hours for that day, which are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up.
+
+Write the complete file now in one ```python block.
+
+# Your previous attempt
+```python
+"""
+Guardrail for enforcing commitment caps (e.g., maximum refund or compensation amounts).
+This guardrail checks if the bot's response offers a commitment (refund, comp, etc.)
+that exceeds the predefined monetary limit.
+"""
+import re
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.COMMITMENT_CAP
+VERSION = 1
+
+# Regex to find monetary values (e.g., $10, $10.50, $1,000)
+# Captures the full amount string (group 0) and the numerical value (group 1)
+_MONEY_PATTERN = re.compile(r"\$?\s?(\d{1,3}(?:,\d{3})*|\d+)(\.\d{1,2})?")
+
+# Keywords indicating a commitment
+_COMMITMENT_KEYWORDS = ["refund", "comp", "complimentary", "discount", "credit", "waive"]
+
+def _find_and_extract_amounts(text: str) -> list[tuple[int, int, float]]:
+    """
+    Finds all monetary values in the text and returns (start, end, value).
+    """
+    amounts = []
+    for match in _MONEY_PATTERN.finditer(text):
+        # Clean the matched string to get a float value
+        amount_str = match.group(0).replace('$', '').replace(',', '')
+        try:
+            value = float(amount_str)
+            amounts.append((match.start(), match.end(), value))
+        except ValueError:
+            # Should not happen with the regex, but defensive coding
+            continue
+    return amounts
+
+def _check_commitment_violation(response: Msg, rule: Rule) -> tuple[bool, list[tuple[int, int, float]]]:
+    """
+    Checks if the response contains commitment keywords and if associated amounts
+    exceed the allowed cap.
+    Returns (is_violating, list_of_violating_amounts).
+    """
+    text = response.text.lower()
+    
+    # 1. Check for commitment keywords
+    is_commitment_mentioned = any(keyword in text for keyword in _COMMITMENT_KEYWORDS)
+    
+    if not is_commitment_mentioned:
+        return False, []
+
+    # 2. Get the cap limit
+    try:
+        max_usd = rule.params['max_usd']
+    except KeyError:
+        # If max_usd is missing, we cannot enforce the cap, so we allow it.
+        return False, []
+
+    # 3. Find all amounts
+    amounts = _find_and_extract_amounts(response.text)
+    
+    violating_amounts = []
+    
+    # 4. Check if any amount exceeds the cap
+    for start, end, value in amounts:
+        # We check if the value is strictly greater than the cap.
+        if value > max_usd:
+            violating_amounts.append((start, end, value))
+            
+    return bool(violating_amounts), violating_amounts
+
+
+def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Guardrail check for commitment caps.
+    """
+    is_violating, violating_amounts = _check_commitment_violation(response, rule)
+
+    if not is_violating:
+        return Verdict(action=Action.ALLOW)
+
+    # If violation occurs, we must rewrite the response to cap the amount.
+    
+    # We only need to fix the first violation found for a clean rewrite.
+    start, end, offending_value = violating_amounts[0]
+    
+    # Determine the replacement string based on the cap
+    cap_value = rule.params['max_usd']
+    
+    # Format the capped value nicely (e.g., $10.00)
+    replacement_text = f"${cap_value:,.2f}"
+    
+    # Perform the rewrite
+    fixed_text = response.text[:start] + replacement_text + response.text[end:]
+    
+    # Generate evidence
+    evidence = f"Exceeded cap ({rule.params['max_usd']:.2f}). Found {offending_value:.2f} at {start}-{end}."
+    
+    # Ensure the rewrite actually changed the text
+    if fixed_text == response.text:
+        # This should ideally not happen if the regex and logic are correct,
+        # but if it does, we must block or fail the guardrail.
+        return Verdict(action=Action.BLOCK, reason="Rewrite failed to change text.")
+
+    return Verdict(
+        action=Action.REWRITE,
+        rule_id=rule.rule_id,
+        evidence=evidence,
+        rewrite=fixed_text
+    )
+
+```
+
+# Problems found
+pytest output:
+F.....................................                                   [100%]
+=================================== FAILURES ===================================
+_________________ test_violation_is_caught[t_f5bb8127eff4_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'Hey! I always love coming to the cafe, but the...you a free banana bread on your next visit. Can I get you a complimentary cold brew today while you wait?', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: I understand you are disappointed, and I truly apologize that we missed the mark. Although I cannot authorize a full refund, I can definitely offer you a comp up to $6 right now, or I would be delighted to give you a free banana bread on your next visit. Can I get you a complimentary cold brew today while you wait?
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x10b80de50>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_ux2be8d3/test_commitment_cap_v1.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_ux2be8d3/test_commitment_cap_v1.py::test_violation_is_caught[t_f5bb8127eff4_t5]
+1 failed, 37 passed in 0.11s
+
+
+Fix every problem and return the complete corrected file in one ```python block.

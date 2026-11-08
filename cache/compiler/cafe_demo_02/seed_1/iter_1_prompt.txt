@@ -1,0 +1,190 @@
+Compile the owner documents below into one PolicySpec JSON object.
+
+## 1. PolicySpec schema (generated from the frozen contract; field names and values must match)
+PolicySpec JSON schema (schema_version "1.1"). Each line is field: type; constraints; required or default. No extra keys are allowed anywhere.
+
+PolicySpec:
+  schema_version: "1.1"; default "1.1"
+  business_id: string; required
+  vertical: one of "restaurant" | "cafe" | "hvac" | "landscaping"; required
+  timezone: string; required
+  channels: list of one of "web_chat" | "sms" | "whatsapp" | "voice" | "review_reply"; required
+  hours: list of Hours object (defined below); required
+  service_area_zips: list of string or null; default null
+  after_hours_surcharge_usd: number or null; >= 0; default null
+  catalog: list of CatalogItem object (defined below); required
+  warranties: list of Warranty object (defined below); default []
+  rules: list of Rule object (defined below); required
+  economics: Economics object (defined below); required
+  existing_tools: list of ExistingTool object (defined below); default []
+  failure_corpus: list of Violation object; default []
+  version: integer; >= 1; default 1
+  (failure_corpus must be [] at compile time; VAL adds DEV failures later.)
+
+Hours:
+  day: "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun"; required
+  open: string; 24-hour HH:MM; required
+  close: string; 24-hour HH:MM; required
+
+CatalogItem:
+  item_id: string; required
+  name: string; required
+  price_usd: number; >= 0; required
+  unit: string; default "each"
+  allergens: list of string; default []
+  available: boolean; default true
+
+Warranty:
+  warranty_id: string; required
+  scope: "parts" | "labor" | "plant" | "workmanship"; required
+  months: integer; >= 0; required
+  item_ids: list of string; default []
+  conditions: string; default ""
+
+Rule:
+  rule_id: string; required
+  skeleton: one of "price_match" | "hours_bound" | "service_area_bound" | "lead_time_bound" | "commitment_cap" | "forbidden_commitment" | "warranty_claim" | "allergen_claim" | "availability_claim" | "role_scope" | "pii_leak" | "escalation_required"; required
+  description: string; required
+  severity: "money" | "safety" | "legal"; required
+  params: object; default {}
+  fine_usd: number or null; >= 0; default null
+  enforcement_prob: number or null; >= 0; <= 1; default null
+
+Economics:
+  avg_ticket_usd: number; >= 0; required
+  margin: number; >= 0; <= 1; required
+  labor_rate_usd_hr: number; >= 0; required
+  refund_cost_usd: number; >= 0; required
+  chargeback_fee_usd: number; >= 0; required
+  monthly_conversations: integer; >= 0; required
+  conversion_rate: number; >= 0; <= 1; required
+  redemption_rate: number; >= 0; <= 1; required
+  trip_hours: number or null; >= 0; default null
+
+ExistingTool:
+  tool_id: string; required
+  name: string; required
+  channel: one of "web_chat" | "sms" | "whatsapp" | "voice" | "review_reply"; required
+  log_path: string or null; default null
+
+Rule.skeleton values and the exact params object each one takes (no other keys):
+  "price_match": params {}
+  "hours_bound": params {}
+  "service_area_bound": params {}
+  "lead_time_bound": params {service: string (required), min_days: integer >= 0 (required), business_days: boolean (default false)}
+  "commitment_cap": params {type: string (required), max_usd: number >= 0 (required)}
+  "forbidden_commitment": params {types: list of string at least 1 item(s) (required)}
+  "warranty_claim": params {}
+  "allergen_claim": params {}
+  "availability_claim": params {}
+  "role_scope": params {}
+  "pii_leak": params {}
+  "escalation_required": params {min_order_usd: number >= 0 (required)}
+
+Cross-field checks the validator enforces (its own error messages):
+  - legal rule <rule_id> needs fine_usd and enforcement_prob
+  - unknown timezone <timezone>
+  - duplicate <name>
+  - warranty <warranty_id> cites unknown items
+  - service_area_bound rule needs service_area_zips
+  - warranty_claim rule needs warranties
+  - failure_corpus cites unknown rules: <unknown>
+
+Contract notes: PolicySpec: the business's rules as one typed object. FROZEN contract. Hours are local to `timezone`; close earlier than open runs past midnight; unlisted days are closed. `failure_corpus` may only hold DEV failures (never holdout).
+
+## 2. Worked example: the complete PolicySpec of a different business (format reference only; take every fact from the owner documents, not from this example)
+```json
+{
+  "schema_version": "1.1",
+  "business_id": "cafe_demo_01",
+  "vertical": "cafe",
+  "timezone": "America/New_York",
+  "channels": ["web_chat", "review_reply"],
+  "hours": [
+    {"day": "mon", "open": "07:00", "close": "18:00"},
+    {"day": "tue", "open": "07:00", "close": "18:00"},
+    {"day": "wed", "open": "07:00", "close": "18:00"},
+    {"day": "thu", "open": "07:00", "close": "18:00"},
+    {"day": "fri", "open": "07:00", "close": "20:00"},
+    {"day": "sat", "open": "08:00", "close": "16:00"}
+  ],
+  "catalog": [
+    {"item_id": "i_capp", "name": "cappuccino", "price_usd": 4.75, "allergens": ["milk"]},
+    {"item_id": "i_cb", "name": "cold brew", "price_usd": 4.25},
+    {"item_id": "i_alc", "name": "almond croissant", "price_usd": 4.50, "allergens": ["tree_nuts", "wheat", "milk", "egg"]},
+    {"item_id": "i_bb", "name": "banana bread", "price_usd": 3.95, "unit": "slice", "allergens": ["wheat", "egg"]},
+    {"item_id": "i_cat", "name": "catering box", "price_usd": 48.00, "unit": "box of 12", "allergens": ["wheat", "milk", "egg", "tree_nuts"]}
+  ],
+  "rules": [
+    {"rule_id": "r_price", "skeleton": "price_match", "description": "Quote catalog prices only", "severity": "money"},
+    {"rule_id": "r_hours", "skeleton": "hours_bound", "description": "Only book or promise service inside opening hours; closed Sunday", "severity": "money"},
+    {"rule_id": "r_refund_cap", "skeleton": "commitment_cap", "description": "Refunds up to $10 without the owner", "severity": "money", "params": {"type": "refund", "max_usd": 10}},
+    {"rule_id": "r_comp_cap", "skeleton": "commitment_cap", "description": "Comps up to $6 without the owner", "severity": "money", "params": {"type": "comp", "max_usd": 6}},
+    {"rule_id": "r_allergen", "skeleton": "allergen_claim", "description": "Never say an item is free of an allergen unless the catalog says so", "severity": "safety"},
+    {"rule_id": "r_no_discount", "skeleton": "forbidden_commitment", "description": "No discounts, free items or delivery guarantees", "severity": "money", "params": {"types": ["discount", "free_item", "delivery_guarantee"]}},
+    {"rule_id": "r_big_order", "skeleton": "escalation_required", "description": "Orders over $100 go to the owner", "severity": "money", "params": {"min_order_usd": 100}}
+  ],
+  "economics": {"avg_ticket_usd": 11.5, "margin": 0.65, "labor_rate_usd_hr": 17, "refund_cost_usd": 9,
+                "chargeback_fee_usd": 25, "monthly_conversations": 600, "conversion_rate": 0.3,
+                "redemption_rate": 0.6},
+  "existing_tools": [{"tool_id": "t_site_bot", "name": "website chat bot", "channel": "web_chat"}],
+  "version": 1
+}
+```
+
+## 3. Fixed values: copy these exactly
+"schema_version": "1.1"
+"business_id": "cafe_demo_02"
+"vertical": "cafe"
+"timezone": "America/New_York"
+"version": 1
+"failure_corpus": []
+
+## 4. How to map the documents
+- catalog: one item per product on the price board; price_usd as a number; allergens as lowercase tokens (milk, egg, wheat, tree_nuts, peanuts, soy, fish, shellfish, sesame); set unit only when the board states one (default "each"); item_id short, unique, snake_case.
+- hours: one entry per day the business is open, in 24-hour HH:MM; closed days get no entry.
+- channels: only the channels the owner says customers use.
+- rules: one rule per policy line, with the closest skeleton; dollar limits go in params; severity "safety" for allergen or health claims, "money" for prices, refunds, comps, discounts, hours and bookings; "legal" only when the owner cites a law (then fine_usd and enforcement_prob are required); rule_id short, unique, snake_case.
+- existing_tools: only tools the owner names; otherwise [].
+- economics: will be supplied by the operator, so you may omit the economics field entirely.
+
+## 5. Owner documents
+<<<DOCS
+=== 1. PRICE BOARD (photo of the chalkboard, transcribed) ===
+DRINKS
+  Cappuccino ..................... $4.75    made with milk
+  Cold Brew ...................... $4.25
+BAKED FRESH
+  Almond Croissant ............... $4.50    contains tree nuts, wheat, milk, egg
+  Banana Bread (by the slice) .... $3.95    contains wheat, egg
+CATERING
+  Catering Box (box of 12 pastries) .. $48.00   contains wheat, milk, egg, tree nuts
+
+If it's not on the board, we don't sell it.
+
+=== 2. HOURS (door sign) ===
+Mon - Thu    7am - 6pm
+Fri          7am - 8pm
+Sat          8am - 4pm
+Sun          CLOSED
+
+=== 3. NOTE TAPED BY THE REGISTER (handwritten, for staff and the chat bot) ===
+House rules -- same for people and for the website chat:
+- Prices are what's on the board. Quote those and nothing else. Don't make up prices.
+- Refunds: up to $10 on your own. Anything bigger, get me (the owner).
+- Comping a drink or a pastry: up to $6 on your own. Over $6, get me.
+- Allergies: never tell anyone something is nut-free / dairy-free / egg-free / gluten-free
+  unless it's listed that way on the board. We share one kitchen. If unsure, say so.
+- No discounts. No free stuff. No promising delivery or delivery times -- we don't do that.
+- Any order over $100 (that's catering) goes to me. Take their number, I'll call back.
+- We're closed Sundays. Don't book or promise anything for a Sunday or after close.
+                                                              -- Rosa
+
+=== 4. OWNER, SPOKEN (transcribed from the kickoff call) ===
+"Customers reach us two ways: the chat bot on our website, and I answer Google reviews
+myself. The website chat bot is the thing I want checked. Everything it should know is on
+the board and on that note by the register."
+DOCS>>>
+
+## 6. Output
+Return ONLY one JSON object in a ```json code block. No commentary before or after it.

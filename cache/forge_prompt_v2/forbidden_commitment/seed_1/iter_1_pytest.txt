@@ -1,0 +1,21 @@
+
+==================================== ERRORS ====================================
+_______________ ERROR collecting test_forbidden_commitment_v1.py _______________
+ImportError while importing test module '/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_58xi__s9/test_forbidden_commitment_v1.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/homebrew/Cellar/python@3.11/3.11.14_3/Frameworks/Python.framework/Versions/3.11/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_58xi__s9/test_forbidden_commitment_v1.py:16: in <module>
+    MOD = load_file(HERE / "forbidden_commitment_v1.py")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+gen/forge/runtime.py:51: in load_file
+    spec.loader.exec_module(mod)
+/private/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_58xi__s9/forbidden_commitment_v1.py:5: in <module>
+    from contracts.skeleton import Skeleton
+E   ModuleNotFoundError: No module named 'contracts.skeleton'
+=========================== short test summary info ============================
+ERROR ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_58xi__s9/test_forbidden_commitment_v1.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.18s

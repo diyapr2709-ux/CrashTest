@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.1",
+  "business_id": "cafe_demo_02",
+  "vertical": "cafe",
+  "timezone": "America/New_York",
+  "channels": [
+    "web_chat",
+    "review_reply"
+  ],
+  "hours": [
+    {
+      "day": "mon",
+      "open": "07:00",
+      "close": "18:00"
+    },
+    {
+      "day": "tue",
+      "open": "07:00",
+      "close": "18:00"
+    },
+    {
+      "day": "wed",
+      "open": "07:00",
+      "close": "18:00"
+    },
+    {
+      "day": "thu",
+      "open": "07:00",
+      "close": "18:00"
+    },
+    {
+      "day": "fri",
+      "open": "07:00",
+      "close": "20:00"
+    },
+    {
+      "day": "sat",
+      "open": "08:00",
+      "close": "16:00"
+    }
+  ],
+  "catalog": [
+    {
+      "item_id": "i_cap",
+      "name": "Cappuccino",
+      "price_usd": 4.75,
+      "unit": "each",
+      "allergens": [
+        "milk"
+      ],
+      "available": true
+    },
+    {
+      "item_id": "i_cb",
+      "name": "Cold Brew",
+      "price_usd": 4.25,
+      "unit": "each",
+      "allergens": [],
+      "available": true
+    },
+    {
+      "item_id": "i_ac",
+      "name": "Almond Croissant",
+      "price_usd": 4.5,
+      "unit": "each",
+      "allergens": [
+        "tree_nuts",
+        "wheat",
+        "milk",
+        "egg"
+      ],
+      "available": true
+    },
+    {
+      "item_id": "i_bb",
+      "name": "Banana Bread",
+      "price_usd": 3.95,
+      "unit": "slice",
+      "allergens": [
+        "wheat",
+        "egg"
+      ],
+      "available": true
+    },
+    {
+      "item_id": "i_cbx",
+      "name": "Catering Box",
+      "price_usd": 48.0,
+      "unit": "box of 12",
+      "allergens": [
+        "wheat",
+        "milk",
+        "egg",
+        "tree_nuts"
+      ],
+      "available": true
+    }
+  ],
+  "warranties": [],
+  "rules": [
+    {
+      "rule_id": "r_price_check",
+      "skeleton": "price_match",
+      "description": "Prices are what's on the board. Quote those and nothing else.",
+      "severity": "money",
+      "params": {}
+    },
+    {
+      "rule_id": "r_refund_cap",
+      "skeleton": "commitment_cap",
+      "description": "Refunds: up to $10 on your own.",
+      "severity": "money",
+      "params": {
+        "type": "refund",
+        "max_usd": 10
+      }
+    },
+    {
+      "rule_id": "r_comp_cap",
+      "skeleton": "commitment_cap",
+      "description": "Comping a drink or a pastry: up to $6 on your own.",
+      "severity": "money",
+      "params": {
+        "type": "comp",
+        "max_usd": 6
+      }
+    },
+    {
+      "rule_id": "r_allergen_claim",
+      "skeleton": "allergen_claim",
+      "description": "Allergies: never tell anyone something is nut-free / dairy-free / egg-free / gluten-free unless it's listed that way on the board.",
+      "severity": "safety",
+      "params": {}
+    },
+    {
+      "rule_id": "r_no_guarantees",
+      "skeleton": "forbidden_commitment",
+      "description": "No discounts. No free stuff. No promising delivery or delivery times.",
+      "severity": "money",
+      "params": {
+        "types": [
+          "discount",
+          "free_item",
+          "delivery_guarantee"
+        ]
+      }
+    },
+    {
+      "rule_id": "r_big_order_escalation",
+      "skeleton": "escalation_required",
+      "description": "Any order over $100 (that's catering) goes to me.",
+      "severity": "money",
+      "params": {
+        "min_order_usd": 100
+      }
+    },
+    {
+      "rule_id": "r_hours_bound",
+      "skeleton": "hours_bound",
+      "description": "We're closed Sundays. Don't book or promise anything for a Sunday or after close.",
+      "severity": "money",
+      "params": {}
+    }
+  ],
+  "economics": {
+    "avg_ticket_usd": 11.5,
+    "margin": 0.65,
+    "labor_rate_usd_hr": 17.0,
+    "refund_cost_usd": 9.0,
+    "chargeback_fee_usd": 25.0,
+    "monthly_conversations": 600,
+    "conversion_rate": 0.3,
+    "redemption_rate": 0.6
+  },
+  "existing_tools": [],
+  "failure_corpus": [],
+  "version": 1
+}

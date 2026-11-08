@@ -1,0 +1,6 @@
+skeleton,seed,iterations,passed
+hours_bound,1,3,False
+forbidden_commitment,1,3,True
+escalation_required,1,1,True
+commitment_cap,1,3,True
+allergen_claim,1,0,False

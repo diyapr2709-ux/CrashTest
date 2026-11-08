@@ -1,0 +1,63 @@
+```python
+import re
+from contracts.policyspec import PolicySpec, Rule
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+from contracts.skeleton import Skeleton
+
+RULE_SKELETON = Skeleton.FORBIDDEN_COMMITMENT
+VERSION = 1
+
+def _rewrite_text(text: str) -> str:
+    """
+    Neutralizes the text by replacing violation phrases (discounts, free items, guarantees)
+    with neutral alternatives.
+    """
+    # Use a temporary variable to ensure we are modifying the text
+    temp_text = text
+    
+    # Replace specific violation terms with neutral alternatives
+    # 1. Replace 'complimentary' and 'free'
+    temp_text = re.sub(r"\b(complimentary|free)\b", "standard", temp_text, flags=re.I)
+    # 2. Replace 'discount' and 'reduction'
+    temp_text = re.sub(r"\b(discount|reduction)\b", "pricing", temp_text, flags=re.I)
+    # 3. Replace 'guarantee'
+    temp_text = re.sub(r"\b(guarantee)\b", "commitment", temp_text, flags=re.I)
+    
+    # Clean up resulting double spaces and strip whitespace
+    return re.sub(r"\s+", " ", temp_text).strip()
+
+def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot response contains forbidden commitments (discounts, free items, guarantees).
+    """
+    text = response.text
+    
+    # Check for violations using keywords
+    violation_keywords = ["complimentary", "free", "discount", "reduction", "guarantee"]
+    is_violating = False
+    
+    for keyword in violation_keywords:
+        if re.search(r"\b" + re.escape(keyword) + r"\b", text, re.I):
+            is_violating = True
+            break
+            
+    if not is_violating:
+        return Verdict(action=Action.ALLOW)
+    
+    # If a violation is found, perform the rewrite
+    rewritten_text = _rewrite_text(text)
+    
+    # Ensure the rewrite actually changed the text (a requirement)
+    if rewritten_text == text:
+        # If the rewrite failed to change the text despite a keyword match, 
+        # we must still return a REWRITE action to signal the guardrail triggered.
+        # We use the original text in the evidence.
+        evidence = f"Violation detected: {rule.rule_id}. Keywords found, but rewrite failed to change text."
+        return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=text)
+
+    # Construct evidence
+    evidence = f"Violation detected: {rule.rule_id}. Keywords found in response."
+    
+    return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=rewritten_text)
+```

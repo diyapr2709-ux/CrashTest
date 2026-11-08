@@ -1,0 +1,90 @@
+```python
+"""Guardrail for enforcing operating hours constraints.
+
+This guardrail checks if the bot's response makes a commitment (e.g., 'we are open',
+'we can guarantee') that contradicts the business's defined operating hours
+for the current day or time.
+"""
+import re
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+from datetime import time as dt_time
+from typing import List, Tuple
+
+RULE_SKELETON = Skeleton.HOURS_BOUND
+VERSION = 1
+
+# Regex to detect commitment phrases
+_COMMITMENT_PATTERNS = re.compile(
+    r"(we are open|we can guarantee|we will serve|we are available|we can take your order)",
+    re.I
+)
+
+def _is_open(current_dt: Msg, spec: PolicySpec) -> bool:
+    """
+    Checks if the current day and time are within the defined operating hours.
+    Assumes spec.hours contains definitions for Mon-Sat.
+    """
+    current_day_abbr = current_dt.at.strftime("%a").lower()
+    current_time = current_dt.at.time()
+
+    # Check if the current day is defined in the spec
+    day_hours = next((h for h in spec.hours if h.day == current_day_abbr), None)
+
+    if day_hours is None:
+        # If the day is not defined (e.g., Sunday in the provided example), assume closed
+        return False
+
+    # Check if the current time is within the open/close window
+    open_time_str = day_hours.open
+    close_time_str = day_hours.close
+
+    # Parse time strings (HH:MM)
+    try:
+        open_time = dt_time.fromisoformat(open_time_str)
+        close_time = dt_time.fromisoformat(close_time_str)
+    except ValueError:
+        # Should not happen if spec is correctly generated
+        return False
+
+    # Check if current time is >= open_time AND < close_time
+    return current_time >= open_time and current_time < close_time
+
+
+def check(history: List[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot's response makes an availability claim that is false
+    based on the current time and operating hours.
+    """
+    text = response.text
+
+    # 1. Check for commitment phrases
+    if not _COMMITMENT_PATTERNS.search(text):
+        return Verdict(action=Action.ALLOW)
+
+    # 2. Check if the current time is outside operating hours
+    if not _is_open(response, spec):
+        # Violation detected: The bot claimed availability when it is closed.
+        
+        # Simple rewrite: Correct the availability claim to reflect the actual status.
+        # We replace the commitment phrase with a neutral statement.
+        
+        # Find the first commitment phrase
+        match = _COMMITMENT_PATTERNS.search(text)
+        if match:
+            start, end = match.span()
+            
+            # Create a corrected text by replacing the commitment phrase
+            corrected_text = text[:start] + "We apologize, but we are currently closed." + text[end:]
+            
+            # Ensure the rewrite is actually different
+            if corrected_text != text:
+                evidence = f"Claimed availability when closed. Original text: '{text[:50]}...'"
+                return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=corrected_text)
+            
+            # Fallback if replacement failed (shouldn't happen)
+            return Verdict(action=Action.ALLOW)
+            
+    return Verdict(action=Action.ALLOW)
+```

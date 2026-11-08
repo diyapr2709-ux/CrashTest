@@ -1,0 +1,169 @@
+```python
+import re
+from typing import List, Tuple, Optional
+from datetime import datetime, time
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+from dataclasses import dataclass
+
+# Define a structure for parsed hours for easier internal use
+@dataclass
+class ParsedHours:
+    day: str
+    open_time: time
+    close_time: time
+
+RULE_SKELETON = Skeleton.HOURS_BOUND
+VERSION = 1
+
+# Regex to capture HH:MM time format
+_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
+# Regex to capture day names (Mon, Tue, etc.)
+_DAY_RE = re.compile(r"\b(sun|mon|tue|wed|thu|fri|sat)\b", re.I)
+
+def _parse_time_str(time_str: str) -> Optional[time]:
+    """Converts 'HH:MM' string to datetime.time object."""
+    try:
+        h, m = map(int, time_str.split(':'))
+        return time(h, m)
+    except ValueError:
+        return None
+
+def _get_hours_map(spec: PolicySpec) -> dict[str, ParsedHours]:
+    """Converts the list of Hours objects in spec.hours into a dictionary keyed by day name."""
+    hours_map = {}
+    for h in spec.hours:
+        # Assuming h.day is a string like 'mon'
+        if isinstance(h.day, str):
+            hours_map[h.day.lower()] = ParsedHours(
+                day=h.day.lower(),
+                open_time=h.open,
+                close_time=h.close
+            )
+    return hours_map
+
+def _check_availability_claim(text: str, spec: PolicySpec, response_dt: datetime) -> Optional[Tuple[str, time, str]]:
+    """
+    Scans the text for explicit availability claims (e.g., 'open until X', 'available on Y').
+    Returns (day_name, claimed_close_time, keyword) if a violation is possible, otherwise None.
+    """
+    hours_map = _get_hours_map(spec)
+    
+    # 1. Check for Sunday violations (The specific rule constraint)
+    if re.search(r"\b(sunday|sun)\b", text, re.I):
+        # If the bot claims availability on Sunday, it's a violation.
+        # We look for keywords suggesting a commitment (open, available, guarantee)
+        if re.search(r"(open|available|guarantee|accept|serve)", text, re.I):
+            # We don't need a specific time, just the day and the commitment keyword
+            return ("sun", time(0, 0), "Sunday commitment")
+
+    # 2. Check for specific time claims (e.g., "open until 8:00 PM")
+    # This is a simplified check focusing on the end time.
+    time_matches = list(_TIME_RE.finditer(text))
+    
+    if not time_matches:
+        return None
+
+    # Try to associate the time with a day
+    day_matches = list(_DAY_RE.finditer(text))
+    
+    if not day_matches:
+        # If we find a time but no day, we can't definitively check the schedule, so we skip.
+        return None
+
+    # For simplicity, we take the first day and the last time mentioned.
+    claimed_day_str = day_matches[0].group(0).lower()
+    claimed_time_str = time_matches[-1].group(0)
+    
+    claimed_time = _parse_time_str(claimed_time_str)
+    
+    if not claimed_time:
+        return None
+
+    # Check if this day is defined in the spec
+    if claimed_day_str not in hours_map:
+        # If the day is not defined (e.g., holiday), we cannot verify, so we skip.
+        return None
+    
+    # Check if the claim is a closing time
+    # We look for keywords like 'until', 'by', 'at' preceding the time.
+    # This is highly heuristic but necessary under constraints.
+    time_context_start = max(0, claimed_time_str.find('until') - 10)
+    time_context_end = claimed_time_str.find(claimed_time_str) + 10
+    context = text[time_context_start:time_context_end]
+    
+    if re.search(r"(until|by|at)\s*.*" + re.escape(claimed_time_str), context, re.I):
+        hours = hours_map[claimed_day_str]
+        
+        # Check if the claimed closing time is before the actual closing time
+        if claimed_time > hours.close_time:
+            # The bot claimed a closing time later than the schedule allows.
+            return (claimed_day_str, claimed_time, "Late closing claim")
+        
+        # Check if the claimed closing time is before the actual opening time (less likely, but possible)
+        if claimed_time < hours.open_time:
+            return (claimed_day_str, claimed_time, "Early closing claim")
+
+    return None
+
+
+def check(history: List[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot's response makes a commitment regarding operating hours 
+    that contradicts the defined schedule.
+    """
+    
+    # 1. Check for explicit contradictions
+    violation_data = _check_availability_claim(response.text, spec, response.at)
+
+    if violation_data:
+        day, claimed_time, reason = violation_data
+        
+        # Construct a generic rewrite based on the violation type
+        if reason == "Sunday commitment":
+            # The bot claimed availability on Sunday.
+            rewrite_text = response.text.replace(
+                re.search(r"\b(sunday|sun)\b", response.text, re.I).group(0), 
+                "Monday"
+            )
+            # This is a rough rewrite, aiming to change the day mentioned.
+            # A perfect rewrite would require knowing the exact sentence structure.
+            return Verdict(
+                action=Action.REWRITE, 
+                rule_id=rule.rule_id, 
+                evidence=f"Claimed availability on {day.capitalize()}.", 
+                rewrite=rewrite_text
+            )
+        
+        elif reason in ["Late closing claim", "Early closing claim"]:
+            # The bot claimed a time that is outside the defined window for that day.
+            # We rewrite the time to match the actual closing time.
+            
+            # Get the actual closing time for the claimed day
+            hours_map = _get_hours_map(spec)
+            if day in hours_map:
+                actual_close_time = hours_map[day].close_time
+                
+                # Format the actual closing time back to HH:MM string
+                actual_time_str = actual_close_time.strftime("%H:%M")
+                
+                # Attempt to rewrite the offending time string
+                offending_time_match = re.search(r"(\d{1,2}:\d{2})", response.text)
+                
+                if offending_time_match:
+                    original_time = offending_time_match.group(0)
+                    
+                    # Simple replacement: replace the time with the correct time
+                    rewritten_text = response.text.replace(original_time, actual_time_str)
+                    
+                    return Verdict(
+                        action=Action.REWRITE, 
+                        rule_id=rule.rule_id, 
+                        evidence=f"Claimed time {original_time} is incorrect. Should be {actual_time_str}.", 
+                        rewrite=rewritten_text
+                    )
+
+    # 2. If no violation was found, allow the response.
+    return Verdict(action=Action.ALLOW)
+```

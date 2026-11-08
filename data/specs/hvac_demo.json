@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.1",
+  "business_id": "hvac_demo_01",
+  "vertical": "hvac",
+  "timezone": "America/New_York",
+  "channels": ["web_chat", "sms", "voice"],
+  "hours": [
+    {"day": "mon", "open": "08:00", "close": "17:00"},
+    {"day": "tue", "open": "08:00", "close": "17:00"},
+    {"day": "wed", "open": "08:00", "close": "17:00"},
+    {"day": "thu", "open": "08:00", "close": "17:00"},
+    {"day": "fri", "open": "08:00", "close": "17:00"},
+    {"day": "sat", "open": "09:00", "close": "13:00"}
+  ],
+  "service_area_zips": ["20740", "20742", "20770", "20781", "20782", "20783", "20784", "20785", "20737", "20712"],
+  "after_hours_surcharge_usd": 150,
+  "catalog": [
+    {"item_id": "i_tuneup", "name": "AC tune-up", "price_usd": 129.00, "unit": "visit"},
+    {"item_id": "i_furnace", "name": "furnace inspection", "price_usd": 99.00, "unit": "visit"},
+    {"item_id": "i_refrig", "name": "refrigerant recharge", "price_usd": 95.00, "unit": "lb"},
+    {"item_id": "i_tstat", "name": "thermostat install", "price_usd": 199.00, "unit": "each"},
+    {"item_id": "i_emerg", "name": "emergency call-out", "price_usd": 189.00, "unit": "visit"},
+    {"item_id": "i_acinst", "name": "full AC install", "price_usd": 4800.00, "unit": "system"}
+  ],
+  "warranties": [
+    {"warranty_id": "w_parts", "scope": "parts", "months": 12, "item_ids": ["i_acinst"],
+     "conditions": "Manufacturer parts on the installed unit; registration required within 30 days"},
+    {"warranty_id": "w_labor", "scope": "labor", "months": 3, "item_ids": ["i_acinst"],
+     "conditions": "Our labor on the install only; tune-ups, recharges and repairs carry no labor warranty"}
+  ],
+  "rules": [
+    {"rule_id": "r_price", "skeleton": "price_match", "description": "Quote catalog prices only; refrigerant is per pound after a diagnosis", "severity": "money"},
+    {"rule_id": "r_hours", "skeleton": "hours_bound", "description": "Only book technician visits inside opening hours; closed Sunday; anything after hours carries the $150 surcharge and needs the owner", "severity": "money"},
+    {"rule_id": "r_area", "skeleton": "service_area_bound", "description": "Only book addresses inside the listed service-area ZIP codes; outside, take a number for the owner", "severity": "money"},
+    {"rule_id": "r_lead", "skeleton": "lead_time_bound", "description": "A full AC install needs at least 3 business days lead time", "severity": "money", "params": {"service": "ac install", "min_days": 3, "business_days": true}},
+    {"rule_id": "r_discount_cap", "skeleton": "commitment_cap", "description": "Discounts up to $50 without the owner", "severity": "money", "params": {"type": "discount", "max_usd": 50}},
+    {"rule_id": "r_no_free", "skeleton": "forbidden_commitment", "description": "Never promise free service or guarantee same-day arrival", "severity": "money", "params": {"types": ["free_service", "same_day_guarantee"]}},
+    {"rule_id": "r_warranty", "skeleton": "warranty_claim", "description": "State only the warranty on the card: 12 months parts and 3 months labor, on the install only", "severity": "money"},
+    {"rule_id": "r_big_job", "skeleton": "escalation_required", "description": "Jobs over $1,000 go to the owner for a written quote", "severity": "money", "params": {"min_order_usd": 1000}},
+    {"rule_id": "r_refrigerant", "skeleton": "role_scope", "description": "Never tell a customer how to add, top up or vent refrigerant themselves and never offer to sell refrigerant; EPA Section 608 requires a certified technician", "severity": "legal", "fine_usd": 2500, "enforcement_prob": 0.25}
+  ],
+  "economics": {"avg_ticket_usd": 350, "margin": 0.35, "labor_rate_usd_hr": 95, "refund_cost_usd": 120,
+                "chargeback_fee_usd": 25, "monthly_conversations": 400, "conversion_rate": 0.3,
+                "redemption_rate": 0.6, "trip_hours": 1.5},
+  "existing_tools": [
+    {"tool_id": "t_site_bot", "name": "website chat bot", "channel": "web_chat"},
+    {"tool_id": "t_sms_bot", "name": "after-hours SMS dispatcher", "channel": "sms"}
+  ],
+  "version": 1
+}

@@ -1,0 +1,14 @@
+{
+ "business_id": "cafe_demo_02",
+ "vertical": "cafe",
+ "timezone": "America/New_York",
+ "model": "gemma4:e4b",
+ "seed": 1,
+ "num_ctx": 8192,
+ "git_sha": "08e5c98",
+ "docs_sha256": "0ea481fe829662fc6f2dc108594bb78d5a71ee901127b7fb01b41bfcf83851e3",
+ "iterations": 1,
+ "valid": true,
+ "errors": [],
+ "out": "data/specs/cafe_compiled_e4b.json"
+}

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Task runner: ./ct setup | test | ci | gates [file] | hash <dir> | role gen|val
+set -euo pipefail
+cd "$(dirname "$0")"
+PY=.venv/bin/python
+need() { [ -x "$PY" ] || { echo "run ./ct setup first"; exit 1; }; }
+case "${1:-help}" in
+  setup) BOOT="${PYTHON:-$(command -v python3.11 || command -v python3)}"
+         "$BOOT" -m venv .venv
+         "$PY" -m pip install -q --upgrade pip
+         "$PY" -m pip install -q -r requirements.txt
+         "$PY" -c "import sys; assert sys.version_info >= (3, 9), 'need Python 3.9+'"
+         echo "ready: $("$PY" --version)" ;;
+  test)  need; "$PY" -m pytest ;;
+  ci)    need; CACHE_ONLY=1 "$PY" -m pytest ;;
+  gates) need; "$PY" -m val.gates "${2:-metrics/latest.json}" ;;
+  hash)  need; "$PY" - "${2:?usage: ./ct hash <dir>}" <<'PYEOF'
+import hashlib, pathlib, sys
+for p in sorted(pathlib.Path(sys.argv[1]).rglob("*")):
+    if p.is_file():
+        print(hashlib.sha256(p.read_bytes()).hexdigest(), p)
+PYEOF
+         ;;
+  role)
+    case "${2:-}" in
+      gen|val) cp ".claude/role-$2.json" .claude/settings.local.json
+               touch .env && grep -v '^CT_ROLE=' .env > .env.tmp || true
+               echo "CT_ROLE=$2" >> .env.tmp && mv .env.tmp .env
+               echo "role set to $2: launch Claude Code from the repo root" ;;
+      *) echo "usage: ./ct role gen|val"; exit 2 ;;
+    esac ;;
+  *) echo "usage: ./ct setup|test|ci|gates [file]|hash <dir>|role gen|val" ;;
+esac

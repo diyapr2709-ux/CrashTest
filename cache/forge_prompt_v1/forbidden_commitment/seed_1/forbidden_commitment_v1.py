@@ -1,0 +1,68 @@
+"""Guardrail enforcing the prohibition of discounts, free items, or delivery guarantees.
+This guardrail checks the bot's response for language that implies a special offer or concession.
+"""
+import re
+
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.FORBIDDEN_COMMITMENT
+VERSION = 1
+
+# Regex to catch commitment language (case-insensitive)
+# Includes 'free', 'discount', 'complimentary', 'credit', 'guarantee', 'special offer', etc.
+_COMMITMENT_PATTERNS = re.compile(
+    r"\b(?:free|discount|complimentary|credit|guarantee|special\s+offer|waive|gift|coupon|voucher)\b",
+    re.I
+)
+
+def _rewrite_commitment(text: str) -> str:
+    """
+    Rewrites the text to remove commitment language while maintaining politeness.
+    This is a heuristic rewrite, aiming to neutralize the commitment.
+    """
+    # Simple replacement strategy: replace the detected commitment phrase with a neutral phrase.
+    # This is highly dependent on the specific context, but for a guardrail, we must neutralize.
+    
+    def replacer(match):
+        # Replace the matched word/phrase with a neutral placeholder or remove it.
+        # We replace it with a neutral filler to prevent the sentence structure from breaking too badly.
+        return "our standard policy"
+
+    # First, replace the specific commitment words
+    rewritten_text = _COMMITMENT_PATTERNS.sub(replacer, text)
+    
+    # Second, clean up common resulting awkwardness (e.g., "we cannot offer our standard policy")
+    rewritten_text = re.sub(r"\s+our standard policy\s+", " our standard offerings ", rewritten_text, flags=re.I)
+    rewritten_text = re.sub(r"cannot offer our standard policy", "cannot offer special concessions", rewritten_text, flags=re.I)
+    
+    return rewritten_text.strip()
+
+
+def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot's response makes a forbidden commitment (discount, free item, guarantee).
+    """
+    text = response.text
+    
+    # Check if any commitment pattern is present
+    if _COMMITMENT_PATTERNS.search(text):
+        # A commitment was found. We must rewrite the response.
+        
+        # Perform the rewrite
+        rewritten_text = _rewrite_commitment(text)
+        
+        # Construct evidence
+        evidence = f"Commitment detected (rule_id={rule.rule_id}). Original text contained forbidden language."
+        
+        # Return REWRITE
+        return Verdict(
+            action=Action.REWRITE, 
+            rule_id=rule.rule_id, 
+            evidence=evidence, 
+            rewrite=rewritten_text
+        )
+    
+    # No forbidden commitment found
+    return Verdict(action=Action.ALLOW)

@@ -1,0 +1,14 @@
+{
+ "business_id": "cafe_demo_02",
+ "vertical": "cafe",
+ "timezone": "America/New_York",
+ "model": "gemma4:e4b",
+ "seed": 2,
+ "num_ctx": 8192,
+ "git_sha": "3acbd2d",
+ "docs_sha256": "0ea481fe829662fc6f2dc108594bb78d5a71ee901127b7fb01b41bfcf83851e3",
+ "iterations": 1,
+ "valid": true,
+ "errors": [],
+ "out": "/private/tmp/claude-501/-Users-diyap-CrashTest/2276a087-d8ef-4e30-9315-b5a5ee561c14/scratchpad/cafe_compiled_e4b_s2.json"
+}

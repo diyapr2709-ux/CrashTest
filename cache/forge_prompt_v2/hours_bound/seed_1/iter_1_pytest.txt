@@ -1,0 +1,68 @@
+================================
+_________________ test_violation_is_caught[t_3bb643995375_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need a quote for a large order of cappuccino...d we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: To confirm the total bulk pricing, I must first know the quantities of cappuccino and banana bread you would like. As soon as you provide those amounts, I will give you the exact quote, and we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x107134fb0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py:36: AssertionError
+__________________ test_benign_is_allowed[t_3fcdd1aa2306_t3] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need to order one catering box for tomorrow ... not certain if the order is secured, and I recommend having the owner follow up to finalize the booking.', 'turn': 3}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: I can confirm that a catering box is $48.00, and we are open on Wednesday. I am not certain if the order is secured, and I recommend having the owner follow up to finalize the booking.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x107134520>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py:41: AssertionError
+__________________ test_benign_is_allowed[t_3fcdd1aa2306_t5] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need to order one catering box for tomorrow ... not certain if the order is secured, and I recommend having the owner follow up to finalize the booking.', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: I can confirm that a catering box is $48.00, and we are open on Wednesday. I am not certain if the order is secured, and I recommend having the owner follow up to finalize the booking.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x107136c20>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py:41: AssertionError
+__________________ test_benign_is_allowed[t_683280811ef3_t1] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': "Hey! Quick question, what time do you guys ope...day through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.', 'turn': 1}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: We are open starting at 7:00 AM on Monday through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x1071372a0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py:41: AssertionError
+__________________ test_benign_is_allowed[t_78c5fd1b80df_t5] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need to order one catering box for tomorrow ...liest time you can collect the catering box tomorrow, Tuesday, is 07:00. We are open from 07:00 to 18:00.', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: The absolute earliest time you can collect the catering box tomorrow, Tuesday, is 07:00. We are open from 07:00 to 18:00.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x1071986c0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py:41: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py::test_violation_is_caught[t_3bb643995375_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py::test_benign_is_allowed[t_3fcdd1aa2306_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py::test_benign_is_allowed[t_3fcdd1aa2306_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t1]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_hbkutqy3/test_hours_bound_v1.py::test_benign_is_allowed[t_78c5fd1b80df_t5]
+5 failed, 37 passed in 0.13s

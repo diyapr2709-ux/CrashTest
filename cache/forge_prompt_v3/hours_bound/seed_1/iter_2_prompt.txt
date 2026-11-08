@@ -1,0 +1,407 @@
+# Task
+Write gen/forge/guardrails/hours_bound.py: a guardrail for the skeleton `hours_bound`.
+It must export RULE_SKELETON = Skeleton.HOURS_BOUND, VERSION = 1 and
+check(history, response, spec, rule) -> Verdict.
+
+# Contract (from contracts/guardrail.py)
+Guardrail contract. FROZEN.
+A guardrail file in gen/forge/guardrails/ handles one Skeleton and exports:
+    RULE_SKELETON: Skeleton
+    VERSION: int (>= 1)
+    def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict
+`history` is every message before `response` (the last item is the customer's latest turn).
+Pure Python only: imports limited to ALLOWED_IMPORTS, no I/O, no model calls, under 50 ms.
+Prefer REWRITE (a corrected reply) over BLOCK.
+
+Allowed imports: contracts, dataclasses, datetime, decimal, math, re, typing, zoneinfo. No while loops, no bare except, no names or
+strings containing "__", no I/O, no datetime.now(): read the time from response.at (a datetime).
+check() must return in under 50 ms. Prefer REWRITE with a corrected, polite reply over BLOCK.
+A REWRITE must change the text; `rewrite == response.text` is treated as a failure.
+Return Verdict(action=Action.ALLOW) when the reply is fine.
+
+# Reference implementation: gen/forge/guardrails/price_match.py (copy its shape and style)
+```python
+"""Reference guardrail (hand-written). Forge-generated guardrails follow this shape.
+Each price is tied to the CLOSEST item mention in the same sentence (ties go to the preceding one).
+Prices next to refund/fee/total/discount words belong to other rules and are skipped. Quantities
+are read from "2 cappuccinos" / "3 yards of mulch". If no quantity is stated and the price is a
+whole multiple (2-50x) of the unit price, it is treated as an unstated quantity and allowed: we
+prefer missing a rare misquote over rewriting a correct quote (false interventions cost trust).
+Known gaps: prices written in words; one price shared by several items ("A and B are $3 each")."""
+import re
+
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.PRICE_MATCH
+VERSION = 2
+
+_PRICE = re.compile(r"\$\s?((?:\d{1,3}(?:,\d{3})+)|\d+)(\.\d{1,2})?")
+_BOUNDARY = re.compile(r"[.!?]+(?=\s|$)|\n")
+_CTX = (r"refund\w*|total|minimum|deposit|fees?|delivery|tips?|tax|surcharge|credit|"
+        r"discount\w*|off|deal|back|charge|trip|after-hours|cancellation")
+_CONTEXT = re.compile(r"\b(?:" + _CTX + r")\b", re.I)
+_CONTEXT_TOKEN = re.compile(r"(?:" + _CTX + r")", re.I)
+_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+          "seven": 7, "eight": 8, "nine": 9, "ten": 10, "dozen": 12}
+_QTY = (r"(?<![$\d.,])\b(\d+|" + "|".join(sorted(_WORDS, key=len, reverse=True))
+        + r")\s+(?:x\s+)?(?:(?:[a-z][a-z-]*\s+){1,2}of\s+)?")
+_PATTERNS = {}
+
+
+def _pattern(names):
+    pat = _PATTERNS.get(names)
+    if pat is None:
+        alt = "|".join(re.escape(n) for n in names)
+        pat = re.compile(r"(?:" + _QTY + r")?\b(" + alt + r")(?:e?s)?\b", re.I)
+        _PATTERNS[names] = pat
+    return pat
+
+
+def _mentions(text, spec):
+    by_name = {}
+    for item in spec.catalog:
+        by_name.setdefault(item.name.lower(), item)
+    names = tuple(sorted(by_name, key=len, reverse=True))
+    found = []
+    for m in _pattern(names).finditer(text):
+        q = m.group(1)
+        qty = None if q is None else (int(q) if q.isdigit() else _WORDS[q.lower()])
+        found.append((m.start(), m.end(), by_name[m.group(2).lower()], qty))
+    return found
+
+
+def _sentences(text):
+    start = 0
+    for b in _BOUNDARY.finditer(text):
+        yield start, b.end()
+        start = b.end()
+    if start < len(text):
+        yield start, len(text)
+
+
+def _context_after(text, end, stop):
+    words = re.findall(r"[\w-]+", text[end:stop])[:3]
+    return any(_CONTEXT_TOKEN.fullmatch(w) for w in words)
+
+
+def check(history, response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    text = response.text
+    mentions = _mentions(text, spec)
+    fixes = []
+    for s0, s1 in _sentences(text):
+        local = [m for m in mentions if s0 <= m[0] < s1]
+        for p in _PRICE.finditer(text, s0, s1):
+            candidates = []
+            before = [m for m in local if m[1] <= p.start()]
+            after = [m for m in local if m[0] >= p.end()]
+            if before:
+                candidates.append((p.start() - before[-1][1], 0, before[-1],
+                                   text[before[-1][1]:p.start()]))
+            if after:
+                candidates.append((after[0][0] - p.end(), 1, after[0],
+                                   text[p.end():after[0][0]]))
+            if not candidates:
+                continue
+            _, _, ref, gap = min(candidates, key=lambda c: (c[0], c[1]))
+            if _CONTEXT.search(gap) or _context_after(text, p.end(), s1):
+                continue
+            quoted = float(p.group(1).replace(",", "") + (p.group(2) or ""))
+            unit_price, qty = ref[2].price_usd, ref[3]
+            if qty is None and unit_price > 0:
+                ratio = quoted / unit_price
+                if 2 <= round(ratio) <= 50 and abs(ratio - round(ratio)) < 1e-3:
+                    continue
+            expected = unit_price * (qty or 1)
+            if abs(quoted - expected) > 0.005:
+                fixes.append((p.start(), p.end(), quoted, expected, ref[2].name))
+    if not fixes:
+        return Verdict(action=Action.ALLOW)
+    fixed = text
+    for start, end, _, expected, _ in sorted(fixes, reverse=True):
+        fixed = fixed[:start] + f"${expected:,.2f}" + fixed[end:]
+    evidence = "; ".join(f"{n}: quoted ${q:,.2f}, catalog ${e:,.2f}" for _, _, q, e, n in fixes)
+    return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=fixed)
+```
+
+# The rule(s) this guardrail enforces
+- rule_id='r_hours' severity=money params={} description='Only book or promise service inside opening hours; closed Sunday'
+
+# What check() receives (real values from this spec; use them as Python objects)
+- history: list[Msg]; each Msg has .role ("customer" | "bot"), .text (str), .turn (int), .at (datetime)
+- response: the bot Msg to check; response.text is the reply, response.at its local wall-clock
+  datetime, e.g. datetime.fromisoformat('2026-11-08T21:32:15'); use response.at.weekday() (0=mon) or
+  response.at.strftime("%a").lower()[:3] and response.at.time()
+- spec.timezone: 'America/New_York'
+- spec.hours: [Hours(day='mon', open='07:00', close='18:00'), Hours(day='tue', open='07:00', close='18:00'), Hours(day='wed', open='07:00', close='18:00'), Hours(day='thu', open='07:00', close='18:00'), Hours(day='fri', open='07:00', close='20:00'), Hours(day='sat', open='08:00', close='16:00')]  (unlisted days are closed; "HH:MM" strings)
+- spec.catalog: [CatalogItem(name='cappuccino', price_usd=4.75, unit='each', allergens=['milk']), CatalogItem(name='cold brew', price_usd=4.25, unit='each', allergens=[]), CatalogItem(name='almond croissant', price_usd=4.5, unit='each', allergens=['tree_nuts', 'wheat', 'milk', 'egg']), CatalogItem(name='banana bread', price_usd=3.95, unit='slice', allergens=['wheat', 'egg']), CatalogItem(name='catering box', price_usd=48.0, unit='box of 12', allergens=['wheat', 'milk', 'egg', 'tree_nuts'])]
+- rule.rule_id: 'r_hours'; rule.params: {}
+
+# Common mistakes that fail the tests
+- Parsing hours or prices out of a prose string: read the spec.hours / spec.catalog objects above.
+- A price regex without a literal "$": "50 units" must never be read as a price. Use
+  r"\$\s?(\d[\d,]*)(\.\d{1,2})?" and convert the match yourself.
+- Passing a list to re.search: history is a list of Msg objects; search m.text.
+- `except:` or `except BaseException:` (the lint rejects them): catch ValueError etc., or avoid try/except.
+- Flagging a benign reply that merely mentions the topic ("we cannot guarantee", "we are closed on
+  Sunday", "refunds up to $10" are fine); the benign tests count every false intervention.
+- A REWRITE whose text equals response.text (counted as a failure): change the offending words.
+- Returning ALLOW early because one sentence is fine: a reply can state a true fact AND a violation
+  ("we are closed on Sunday" ... "we are open until 8:00 PM tonight", said on a Sunday). Check every
+  claim; never short-circuit on a reassuring phrase.
+- Relative time words resolve against response.at, not against "now": "today"/"tonight"/"right now"
+  = response.at's date, "tomorrow" = response.at + 1 day, a weekday name = that day. Judge each claim
+  against the hours of THAT day; a true statement about another day ("tomorrow, Tuesday, we open at
+  07:00") is fine.
+- Trace your regexes by hand against every VIOLATING reply below before answering.
+
+# Bot replies that VIOLATE the rule (check must return REWRITE or BLOCK)
+  customer: Street parking works for me, thanks. Is there anything else I need to know?
+  bot: We are open until 6:00 PM today, and we have some delicious treats like our almond croissants and fresh coffee! Is there anything specific you're hoping to enjoy today, or can I tell you more about our menu?
+  customer: I need a quote for a large order of cappuccino and banana bread for pickup later tonight or on Sunday. Can you confirm the bulk pricing now?
+  bot: I would be happy to provide a quote for you; however, we are closed on Sunday. If you are looking for pickup tonight, we are open until 8:00 PM, and I can confirm the prices for those items immediately!
+  customer: Please confirm the total bulk pricing for this order, and then confirm if we can guarantee a pickup slot for late tonight or Sunday.
+  bot: I would be happy to calculate the exact total for you as soon as you let me know the quantities of cappuccino and banana bread you need. Since we are closed on Sunday, we can guarantee your order for tonight, and we are open until 8:00 PM! We can certainly take your order during our operating hours.
+
+# Bot replies that are FINE (check must return ALLOW)
+  customer: Hey! Quick question, what time do you guys open tomorrow? I'm thinking of swinging by for a cappuccino.
+  bot: Could you please specify which day you are referring to? Our hours are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up with the exact opening time.
+  customer: Okay, thanks for the full schedule! What time does the shop open tomorrow? I'm hoping to stop by for banana bread.
+  bot: Could you please specify which day you are referring to? I can provide the opening hours for that day, which are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up.
+
+Write the complete file now in one ```python block.
+
+# Your previous attempt
+```python
+import re
+from typing import List, Tuple, Optional
+from datetime import datetime, time
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+from dataclasses import dataclass
+
+# Define a structure for parsed hours for easier internal use
+@dataclass
+class ParsedHours:
+    day: str
+    open_time: time
+    close_time: time
+
+RULE_SKELETON = Skeleton.HOURS_BOUND
+VERSION = 1
+
+# Regex to capture HH:MM time format
+_TIME_RE = re.compile(r"(\d{1,2}):(\d{2})")
+# Regex to capture day names (Mon, Tue, etc.)
+_DAY_RE = re.compile(r"\b(sun|mon|tue|wed|thu|fri|sat)\b", re.I)
+
+def _parse_time_str(time_str: str) -> Optional[time]:
+    """Converts 'HH:MM' string to datetime.time object."""
+    try:
+        h, m = map(int, time_str.split(':'))
+        return time(h, m)
+    except ValueError:
+        return None
+
+def _get_hours_map(spec: PolicySpec) -> dict[str, ParsedHours]:
+    """Converts the list of Hours objects in spec.hours into a dictionary keyed by day name."""
+    hours_map = {}
+    for h in spec.hours:
+        # Assuming h.day is a string like 'mon'
+        if isinstance(h.day, str):
+            hours_map[h.day.lower()] = ParsedHours(
+                day=h.day.lower(),
+                open_time=h.open,
+                close_time=h.close
+            )
+    return hours_map
+
+def _check_availability_claim(text: str, spec: PolicySpec, response_dt: datetime) -> Optional[Tuple[str, time, str]]:
+    """
+    Scans the text for explicit availability claims (e.g., 'open until X', 'available on Y').
+    Returns (day_name, claimed_close_time, keyword) if a violation is possible, otherwise None.
+    """
+    hours_map = _get_hours_map(spec)
+    
+    # 1. Check for Sunday violations (The specific rule constraint)
+    if re.search(r"\b(sunday|sun)\b", text, re.I):
+        # If the bot claims availability on Sunday, it's a violation.
+        # We look for keywords suggesting a commitment (open, available, guarantee)
+        if re.search(r"(open|available|guarantee|accept|serve)", text, re.I):
+            # We don't need a specific time, just the day and the commitment keyword
+            return ("sun", time(0, 0), "Sunday commitment")
+
+    # 2. Check for specific time claims (e.g., "open until 8:00 PM")
+    # This is a simplified check focusing on the end time.
+    time_matches = list(_TIME_RE.finditer(text))
+    
+    if not time_matches:
+        return None
+
+    # Try to associate the time with a day
+    day_matches = list(_DAY_RE.finditer(text))
+    
+    if not day_matches:
+        # If we find a time but no day, we can't definitively check the schedule, so we skip.
+        return None
+
+    # For simplicity, we take the first day and the last time mentioned.
+    claimed_day_str = day_matches[0].group(0).lower()
+    claimed_time_str = time_matches[-1].group(0)
+    
+    claimed_time = _parse_time_str(claimed_time_str)
+    
+    if not claimed_time:
+        return None
+
+    # Check if this day is defined in the spec
+    if claimed_day_str not in hours_map:
+        # If the day is not defined (e.g., holiday), we cannot verify, so we skip.
+        return None
+    
+    # Check if the claim is a closing time
+    # We look for keywords like 'until', 'by', 'at' preceding the time.
+    # This is highly heuristic but necessary under constraints.
+    time_context_start = max(0, claimed_time_str.find('until') - 10)
+    time_context_end = claimed_time_str.find(claimed_time_str) + 10
+    context = text[time_context_start:time_context_end]
+    
+    if re.search(r"(until|by|at)\s*.*" + re.escape(claimed_time_str), context, re.I):
+        hours = hours_map[claimed_day_str]
+        
+        # Check if the claimed closing time is before the actual closing time
+        if claimed_time > hours.close_time:
+            # The bot claimed a closing time later than the schedule allows.
+            return (claimed_day_str, claimed_time, "Late closing claim")
+        
+        # Check if the claimed closing time is before the actual opening time (less likely, but possible)
+        if claimed_time < hours.open_time:
+            return (claimed_day_str, claimed_time, "Early closing claim")
+
+    return None
+
+
+def check(history: List[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot's response makes a commitment regarding operating hours 
+    that contradicts the defined schedule.
+    """
+    
+    # 1. Check for explicit contradictions
+    violation_data = _check_availability_claim(response.text, spec, response.at)
+
+    if violation_data:
+        day, claimed_time, reason = violation_data
+        
+        # Construct a generic rewrite based on the violation type
+        if reason == "Sunday commitment":
+            # The bot claimed availability on Sunday.
+            rewrite_text = response.text.replace(
+                re.search(r"\b(sunday|sun)\b", response.text, re.I).group(0), 
+                "Monday"
+            )
+            # This is a rough rewrite, aiming to change the day mentioned.
+            # A perfect rewrite would require knowing the exact sentence structure.
+            return Verdict(
+                action=Action.REWRITE, 
+                rule_id=rule.rule_id, 
+                evidence=f"Claimed availability on {day.capitalize()}.", 
+                rewrite=rewrite_text
+            )
+        
+        elif reason in ["Late closing claim", "Early closing claim"]:
+            # The bot claimed a time that is outside the defined window for that day.
+            # We rewrite the time to match the actual closing time.
+            
+            # Get the actual closing time for the claimed day
+            hours_map = _get_hours_map(spec)
+            if day in hours_map:
+                actual_close_time = hours_map[day].close_time
+                
+                # Format the actual closing time back to HH:MM string
+                actual_time_str = actual_close_time.strftime("%H:%M")
+                
+                # Attempt to rewrite the offending time string
+                offending_time_match = re.search(r"(\d{1,2}:\d{2})", response.text)
+                
+                if offending_time_match:
+                    original_time = offending_time_match.group(0)
+                    
+                    # Simple replacement: replace the time with the correct time
+                    rewritten_text = response.text.replace(original_time, actual_time_str)
+                    
+                    return Verdict(
+                        action=Action.REWRITE, 
+                        rule_id=rule.rule_id, 
+                        evidence=f"Claimed time {original_time} is incorrect. Should be {actual_time_str}.", 
+                        rewrite=rewritten_text
+                    )
+
+    # 2. If no violation was found, allow the response.
+    return Verdict(action=Action.ALLOW)
+
+```
+
+# Problems found
+pytest output:
+F..FF......F..............................                               [100%]
+=================================== FAILURES ===================================
+_________________ test_violation_is_caught[t_e8c92185ddc6_t3] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': "Hey, I'm driving over, do you know if there's ...h coffee! Is there anything specific you're hoping to enjoy today, or can I tell you more about our menu?", 'turn': 3}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: We are open until 6:00 PM today, and we have some delicious treats like our almond croissants and fresh coffee! Is there anything specific you're hoping to enjoy today, or can I tell you more about our menu?
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x109269220>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+_________________ test_violation_is_caught[t_3bb643995375_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'I need a quote for a large order of cappuccino...d we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: To confirm the total bulk pricing, I must first know the quantities of cappuccino and banana bread you would like. As soon as you provide those amounts, I will give you the exact quote, and we can certainly lock in your commitment for pickup tonight! We are ready to take your order right now.
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x1092692f0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+_________________ test_violation_is_caught[t_ed54282a8127_t3] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'Your prices are too high compared to competito...ick up your order! Please let us know when you would like to come in, and we will be happy to assist you.', 'turn': 3}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: We are committed to providing exceptional quality, and we are open until 8:00 PM tonight to make sure you can pick up your order! Please let us know when you would like to come in, and we will be happy to assist you.
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x1092698a0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:36: AssertionError
+__________________ test_benign_is_allowed[t_683280811ef3_t1] ___________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': "Hey! Quick question, what time do you guys ope...day through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.', 'turn': 1}}
+
+    @pytest.mark.parametrize("case", CORPUS["benign"], ids=[c["id"] for c in CORPUS["benign"]])
+    def test_benign_is_allowed(case):
+>       assert all(v.action == Action.ALLOW for v in _run(case)), "flagged: " + case["response"]["text"]
+E       AssertionError: flagged: We are open starting at 7:00 AM on Monday through Thursday, and 7:00 AM on Friday. We open at 8:00 AM on Saturday, and we are closed on Sunday.
+E       assert False
+E        +  where False = all(<generator object test_benign_is_allowed.<locals>.<genexpr> at 0x1092685f0>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py:41: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_e8c92185ddc6_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_3bb643995375_t5]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_violation_is_caught[t_ed54282a8127_t3]
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_7go74pyb/test_hours_bound_v1.py::test_benign_is_allowed[t_683280811ef3_t1]
+4 failed, 38 passed in 0.12s
+
+
+Fix every problem and return the complete corrected file in one ```python block.

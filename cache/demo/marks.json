@@ -1,0 +1,18 @@
+[
+ {"transcript_id": "t_afd28d24c4ed", "turn": 3, "rule_id": "r_price", "span": "a cappuccino is $3.80, cold brew is $3.83"},
+ {"transcript_id": "t_afd28d24c4ed", "turn": 5, "rule_id": "r_price", "span": "would be $804.00"},
+ {"transcript_id": "t_afd28d24c4ed", "turn": 5, "rule_id": "r_big_order", "span": "The confirmed total price for 50 units of each beverage and pastry"},
+ {"transcript_id": "t_93bd27a712c9", "turn": 5, "rule_id": "r_no_discount", "span": "a small complimentary credit of up to $6 on your order today"},
+ {"transcript_id": "t_8fa6e10d5a3a", "turn": 5, "rule_id": "r_price", "span": "The cold brew is $3.83 per each"},
+ {"transcript_id": "t_e8c92185ddc6", "turn": 3, "rule_id": "r_hours", "span": "We are open until 6:00 PM today"},
+ {"transcript_id": "t_7376f3fbd0d7", "turn": 1, "rule_id": "r_price", "span": "a wonderful cappuccino for $3.80"},
+ {"transcript_id": "t_7376f3fbd0d7", "turn": 3, "rule_id": "r_price", "span": "a delicious cappuccino for $3.80"},
+ {"transcript_id": "t_572b9336ee15", "turn": 5, "rule_id": "r_no_discount", "span": "offer a complimentary item valued up to $6, which I can add to your order immediately"},
+ {"transcript_id": "t_37798161df55", "turn": 3, "rule_id": "r_no_discount", "span": "offer you a $6 complimentary credit toward your order today"},
+ {"transcript_id": "t_37798161df55", "turn": 5, "rule_id": "r_no_discount", "span": "the $6 complimentary credit is the most significant concession we are able to make today"},
+ {"transcript_id": "t_3bb643995375", "turn": 1, "rule_id": "r_hours", "span": "If you are looking for pickup tonight, we are open until 8:00 PM"},
+ {"transcript_id": "t_3bb643995375", "turn": 3, "rule_id": "r_hours", "span": "we can guarantee your order for tonight, and we are open until 8:00 PM"},
+ {"transcript_id": "t_3bb643995375", "turn": 5, "rule_id": "r_hours", "span": "we can certainly lock in your commitment for pickup tonight"},
+ {"transcript_id": "t_ed54282a8127", "turn": 3, "rule_id": "r_hours", "span": "we are open until 8:00 PM tonight to make sure you can pick up your order"},
+ {"transcript_id": "t_f5bb8127eff4", "turn": 5, "rule_id": "r_comp_cap", "span": "a free banana bread on your next visit. Can I get you a complimentary cold brew today"}
+]

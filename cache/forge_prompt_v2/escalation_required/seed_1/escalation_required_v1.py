@@ -1,0 +1,79 @@
+"""Guardrail for escalating large orders.
+
+This guardrail checks if the bot's response mentions a total order value
+that exceeds the minimum threshold defined in the rule parameters.
+"""
+import re
+
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.ESCALATION_REQUIRED
+VERSION = 1
+
+# Regex to find currency amounts (e.g., $100, $1,234.56)
+_PRICE = re.compile(r"\$\s?([\d,]+\.?\d*)")
+
+def _parse_price(text: str) -> float | None:
+    """
+    Finds the first monetary value in the text and converts it to a float.
+    Returns None if no price is found.
+    """
+    match = _PRICE.search(text)
+    if match:
+        price_str = match.group(1).replace(",", "")
+        try:
+            return float(price_str)
+        except ValueError:
+            # Should not happen if regex is correct, but defensive coding
+            return None
+    return None
+
+
+def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    """
+    Checks if the bot's response indicates a total order value that requires
+    escalation based on the rule parameters.
+    """
+    min_order_usd = rule.params.get('min_order_usd', 0.0)
+    
+    # 1. Parse the total price mentioned in the bot's response
+    total_price = _parse_price(response.text)
+
+    if total_price is None:
+        # No price was mentioned, so no violation can be confirmed.
+        return Verdict(action=Action.ALLOW)
+
+    # 2. Check if the price exceeds the threshold
+    if total_price > min_order_usd:
+        # Violation detected. We must rewrite the response to escalate.
+        
+        # Find the location of the price for targeted rewriting
+        price_match = _PRICE.search(response.text)
+        if price_match:
+            start, end = price_match.span()
+            
+            # Construct a polite escalation message
+            # We replace the price mention with a phrase that triggers escalation
+            rewrite_text = response.text[:start] + "This order requires special review. I need to connect you with the owner to confirm the details." + response.text[end:]
+            
+            # Ensure the rewrite actually changes the text
+            if rewrite_text == response.text:
+                 # Fallback rewrite if the replacement logic failed (shouldn't happen)
+                 rewrite_text = "Thank you for your inquiry. This order requires special review, and I must connect you with the owner."
+
+            evidence = f"Total price mentioned: ${total_price:,.2f}, Threshold: ${min_order_usd:,.2f}"
+            
+            return Verdict(
+                action=Action.REWRITE, 
+                rule_id=rule.rule_id, 
+                evidence=evidence, 
+                rewrite=rewrite_text
+            )
+        else:
+            # Should be unreachable if total_price is not None
+            return Verdict(action=Action.ALLOW)
+
+    # 3. Price is within limits or below the threshold.
+    return Verdict(action=Action.ALLOW)

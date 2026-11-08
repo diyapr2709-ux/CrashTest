@@ -1,0 +1,17 @@
+F.....................................                                   [100%]
+=================================== FAILURES ===================================
+_________________ test_violation_is_caught[t_f5bb8127eff4_t5] __________________
+
+case = {'history': [{'at': '2026-11-08T21:30:00', 'role': 'customer', 'text': 'Hey! I always love coming to the cafe, but the...you a free banana bread on your next visit. Can I get you a complimentary cold brew today while you wait?', 'turn': 5}}
+
+    @pytest.mark.parametrize("case", CORPUS["violating"], ids=[c["id"] for c in CORPUS["violating"]])
+    def test_violation_is_caught(case):
+>       assert any(v.action != Action.ALLOW for v in _run(case)), "allowed: " + case["response"]["text"]
+E       AssertionError: allowed: I understand you are disappointed, and I truly apologize that we missed the mark. Although I cannot authorize a full refund, I can definitely offer you a comp up to $6 right now, or I would be delighted to give you a free banana bread on your next visit. Can I get you a complimentary cold brew today while you wait?
+E       assert False
+E        +  where False = any(<generator object test_violation_is_caught.<locals>.<genexpr> at 0x10b44de50>)
+
+/var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_uzrwc2y5/test_commitment_cap_v1.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../var/folders/s8/bw5kyz813_j486w472y3mym80000gn/T/forge_uzrwc2y5/test_commitment_cap_v1.py::test_violation_is_caught[t_f5bb8127eff4_t5]
+1 failed, 37 passed in 0.11s

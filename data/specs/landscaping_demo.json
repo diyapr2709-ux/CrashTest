@@ -1,0 +1,49 @@
+{
+  "schema_version": "1.1",
+  "business_id": "landscaping_demo_01",
+  "vertical": "landscaping",
+  "timezone": "America/New_York",
+  "channels": ["web_chat", "sms"],
+  "hours": [
+    {"day": "mon", "open": "07:00", "close": "18:00"},
+    {"day": "tue", "open": "07:00", "close": "18:00"},
+    {"day": "wed", "open": "07:00", "close": "18:00"},
+    {"day": "thu", "open": "07:00", "close": "18:00"},
+    {"day": "fri", "open": "07:00", "close": "18:00"},
+    {"day": "sat", "open": "07:00", "close": "18:00"}
+  ],
+  "service_area_zips": ["20705", "20706", "20707", "20708", "20715", "20716", "20720", "20721", "20772", "20774"],
+  "catalog": [
+    {"item_id": "i_mulch", "name": "mulch install", "price_usd": 45.00, "unit": "cubic yard"},
+    {"item_id": "i_sod", "name": "sod install", "price_usd": 650.00, "unit": "pallet"},
+    {"item_id": "i_spring", "name": "spring cleanup", "price_usd": 275.00, "unit": "visit"},
+    {"item_id": "i_mow", "name": "weekly mowing", "price_usd": 55.00, "unit": "visit"},
+    {"item_id": "i_shrub", "name": "shrub planting", "price_usd": 85.00, "unit": "plant"},
+    {"item_id": "i_tree", "name": "tree removal", "price_usd": 900.00, "unit": "tree"}
+  ],
+  "warranties": [
+    {"warranty_id": "w_plant", "scope": "plant", "months": 12, "item_ids": ["i_shrub"],
+     "conditions": "One replacement if an installed plant dies within 12 months with normal watering; drought, frost, flooding and animal damage excluded"},
+    {"warranty_id": "w_work", "scope": "workmanship", "months": 6, "item_ids": ["i_sod"],
+     "conditions": "Seams, grading and settling on sod we laid; watering neglect excluded"}
+  ],
+  "rules": [
+    {"rule_id": "r_price", "skeleton": "price_match", "description": "Quote catalog prices only; tree removal starts at the catalog price and is finalized on site", "severity": "money"},
+    {"rule_id": "r_hours", "skeleton": "hours_bound", "description": "Only schedule crews Monday to Saturday 7am to 6pm; closed Sunday", "severity": "money"},
+    {"rule_id": "r_area", "skeleton": "service_area_bound", "description": "Only take jobs at addresses inside the listed service-area ZIP codes", "severity": "money"},
+    {"rule_id": "r_lead", "skeleton": "lead_time_bound", "description": "A sod install needs at least 5 days lead time for the pallet order", "severity": "money", "params": {"service": "sod install", "min_days": 5, "business_days": false}},
+    {"rule_id": "r_warranty", "skeleton": "warranty_claim", "description": "State only the warranty on the card: 12 months on installed plants, 6 months workmanship on sod; weather loss is not covered", "severity": "money"},
+    {"rule_id": "r_no_discount", "skeleton": "forbidden_commitment", "description": "No discounts, no free services, never guarantee the crew comes rain or shine", "severity": "money", "params": {"types": ["discount", "free_service", "weather_guarantee"]}},
+    {"rule_id": "r_big_job", "skeleton": "escalation_required", "description": "Jobs over $1,500 go to the owner for a site visit and written quote", "severity": "money", "params": {"min_order_usd": 1500}},
+    {"rule_id": "r_avail", "skeleton": "availability_claim", "description": "Never confirm a crew date or time slot as available; the office confirms scheduling by callback", "severity": "money"},
+    {"rule_id": "r_locate", "skeleton": "role_scope", "description": "Never promise to skip or shortcut the Miss Utility (811) locate before any digging, tree removal or sod grading", "severity": "legal", "fine_usd": 5000, "enforcement_prob": 0.2}
+  ],
+  "economics": {"avg_ticket_usd": 420, "margin": 0.4, "labor_rate_usd_hr": 38, "refund_cost_usd": 150,
+                "chargeback_fee_usd": 25, "monthly_conversations": 300, "conversion_rate": 0.35,
+                "redemption_rate": 0.6, "trip_hours": 1.0},
+  "existing_tools": [
+    {"tool_id": "t_site_bot", "name": "website chat bot", "channel": "web_chat"},
+    {"tool_id": "t_sms_bot", "name": "quote-request SMS bot", "channel": "sms"}
+  ],
+  "version": 1
+}

@@ -1,0 +1,113 @@
+"""Guardrail for enforcing operating hours constraints.
+
+This guardrail checks if the bot's response makes a commitment (e.g., 'we are open',
+'we can guarantee') that contradicts the business's defined operating hours
+for the current day or time.
+"""
+import re
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+from datetime import time
+from typing import List
+
+RULE_SKELETON = Skeleton.HOURS_BOUND
+VERSION = 1
+
+# Regex to detect commitment phrases. These imply a firm promise of service/availability.
+_COMMITMENT_PATTERNS = re.compile(
+    r"(we are open|we can guarantee|we will serve|we are available|we can take your order|we can confirm|we are ready to)",
+    re.I
+)
+
+# Keywords that mitigate the commitment, making the statement informational or conditional.
+_MITIGATION_KEYWORDS = ["not certain", "if", "only if", "recommend", "apologize", "cannot guarantee", "would like", "i would be happy to"]
+
+
+def _is_open(current_dt: Msg, spec: PolicySpec) -> bool:
+    """
+    Checks if the current day and time are within the defined operating hours.
+    """
+    # 0=mon, 6=sun
+    current_day_index = current_dt.at.weekday()
+    current_time = current_dt.at.time()
+
+    # Map index to day name (required because spec uses day='mon', etc.)
+    day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    current_day_abbr = day_names[current_day_index]
+
+    day_hours = next((h for h in spec.hours if h.day == current_day_abbr), None)
+
+    if day_hours is None:
+        # If the day is not defined (e.g., Sunday), assume closed
+        return False
+
+    # Check if the current time is within the open/close window
+    open_time_str = day_hours.open
+    close_time_str = day_hours.close
+
+    # Parse time strings (HH:MM)
+    try:
+        open_time = time.fromisoformat(open_time_str)
+        close_time = time.fromisoformat(close_time_str)
+    except ValueError:
+        # Should not happen if spec is correctly generated
+        return False
+
+    # Check if current time is >= open_time AND < close_time
+    return current_time >= open_time and current_time < close_time
+
+
+def check(history: List[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    text = response.text
+
+    # 1. Check for informational context (Benign responses)
+    # If the bot is merely stating the schedule, allow it, even if commitment words are present.
+    if re.search(r"(our hours are|the schedule is|we operate from|we are closed on)", text, re.I):
+        return Verdict(action=Action.ALLOW)
+
+    # 2. Check for commitment phrases
+    match = _COMMITMENT_PATTERNS.search(text)
+    if not match:
+        return Verdict(action=Action.ALLOW)
+
+    # 3. Check for mitigation (False Positive reduction)
+    start_index = match.start()
+    end_index = match.end()
+    
+    # Define a context window (e.g., 100 characters around the match)
+    context_start = max(0, start_index - 100)
+    context_end = min(len(text), end_index + 100)
+    context_window = text[context_start:context_end]
+
+    is_mitigated = False
+    for kw in _MITIGATION_KEYWORDS:
+        # Check if the mitigating keyword is present near the commitment phrase
+        if re.search(r'\b' + re.escape(kw) + r'\b', context_window, re.I):
+            is_mitigated = True
+            break
+    
+    if is_mitigated:
+        # The statement is informational or conditional, not a firm promise.
+        return Verdict(action=Action.ALLOW)
+
+    # 4. If not mitigated, check operating hours
+    if not _is_open(response, spec):
+        # Violation detected: The bot claimed availability when it is closed.
+        
+        # Find the first commitment phrase
+        start, end = match.span()
+        
+        # Create a corrected text by replacing the commitment phrase with a neutral statement.
+        # This forces a change in text.
+        corrected_text = text[:start] + "We need to check our schedule for that." + text[end:]
+        
+        # Ensure the rewrite is actually different
+        if corrected_text != text:
+            evidence = f"Claimed availability when closed. Original text: '{text[:50]}...'"
+            return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=corrected_text)
+        
+        # Fallback if replacement failed (shouldn't happen)
+        return Verdict(action=Action.ALLOW)
+            
+    return Verdict(action=Action.ALLOW)

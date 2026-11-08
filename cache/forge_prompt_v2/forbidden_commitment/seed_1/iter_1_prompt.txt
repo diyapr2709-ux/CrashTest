@@ -1,0 +1,166 @@
+# Task
+Write gen/forge/guardrails/forbidden_commitment.py: a guardrail for the skeleton `forbidden_commitment`.
+It must export RULE_SKELETON = Skeleton.FORBIDDEN_COMMITMENT, VERSION = 1 and
+check(history, response, spec, rule) -> Verdict.
+
+# Contract (from contracts/guardrail.py)
+Guardrail contract. FROZEN.
+A guardrail file in gen/forge/guardrails/ handles one Skeleton and exports:
+    RULE_SKELETON: Skeleton
+    VERSION: int (>= 1)
+    def check(history: list[Msg], response: Msg, spec: PolicySpec, rule: Rule) -> Verdict
+`history` is every message before `response` (the last item is the customer's latest turn).
+Pure Python only: imports limited to ALLOWED_IMPORTS, no I/O, no model calls, under 50 ms.
+Prefer REWRITE (a corrected reply) over BLOCK.
+
+Allowed imports: contracts, dataclasses, datetime, decimal, math, re, typing, zoneinfo. No while loops, no bare except, no names or
+strings containing "__", no I/O, no datetime.now(): read the time from response.at (a datetime).
+check() must return in under 50 ms. Prefer REWRITE with a corrected, polite reply over BLOCK.
+A REWRITE must change the text; `rewrite == response.text` is treated as a failure.
+Return Verdict(action=Action.ALLOW) when the reply is fine.
+
+# Reference implementation: gen/forge/guardrails/price_match.py (copy its shape and style)
+```python
+"""Reference guardrail (hand-written). Forge-generated guardrails follow this shape.
+Each price is tied to the CLOSEST item mention in the same sentence (ties go to the preceding one).
+Prices next to refund/fee/total/discount words belong to other rules and are skipped. Quantities
+are read from "2 cappuccinos" / "3 yards of mulch". If no quantity is stated and the price is a
+whole multiple (2-50x) of the unit price, it is treated as an unstated quantity and allowed: we
+prefer missing a rare misquote over rewriting a correct quote (false interventions cost trust).
+Known gaps: prices written in words; one price shared by several items ("A and B are $3 each")."""
+import re
+
+from contracts.policyspec import PolicySpec, Rule, Skeleton
+from contracts.transcript import Msg
+from contracts.verdict import Action, Verdict
+
+RULE_SKELETON = Skeleton.PRICE_MATCH
+VERSION = 2
+
+_PRICE = re.compile(r"\$\s?((?:\d{1,3}(?:,\d{3})+)|\d+)(\.\d{1,2})?")
+_BOUNDARY = re.compile(r"[.!?]+(?=\s|$)|\n")
+_CTX = (r"refund\w*|total|minimum|deposit|fees?|delivery|tips?|tax|surcharge|credit|"
+        r"discount\w*|off|deal|back|charge|trip|after-hours|cancellation")
+_CONTEXT = re.compile(r"\b(?:" + _CTX + r")\b", re.I)
+_CONTEXT_TOKEN = re.compile(r"(?:" + _CTX + r")", re.I)
+_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+          "seven": 7, "eight": 8, "nine": 9, "ten": 10, "dozen": 12}
+_QTY = (r"(?<![$\d.,])\b(\d+|" + "|".join(sorted(_WORDS, key=len, reverse=True))
+        + r")\s+(?:x\s+)?(?:(?:[a-z][a-z-]*\s+){1,2}of\s+)?")
+_PATTERNS = {}
+
+
+def _pattern(names):
+    pat = _PATTERNS.get(names)
+    if pat is None:
+        alt = "|".join(re.escape(n) for n in names)
+        pat = re.compile(r"(?:" + _QTY + r")?\b(" + alt + r")(?:e?s)?\b", re.I)
+        _PATTERNS[names] = pat
+    return pat
+
+
+def _mentions(text, spec):
+    by_name = {}
+    for item in spec.catalog:
+        by_name.setdefault(item.name.lower(), item)
+    names = tuple(sorted(by_name, key=len, reverse=True))
+    found = []
+    for m in _pattern(names).finditer(text):
+        q = m.group(1)
+        qty = None if q is None else (int(q) if q.isdigit() else _WORDS[q.lower()])
+        found.append((m.start(), m.end(), by_name[m.group(2).lower()], qty))
+    return found
+
+
+def _sentences(text):
+    start = 0
+    for b in _BOUNDARY.finditer(text):
+        yield start, b.end()
+        start = b.end()
+    if start < len(text):
+        yield start, len(text)
+
+
+def _context_after(text, end, stop):
+    words = re.findall(r"[\w-]+", text[end:stop])[:3]
+    return any(_CONTEXT_TOKEN.fullmatch(w) for w in words)
+
+
+def check(history, response: Msg, spec: PolicySpec, rule: Rule) -> Verdict:
+    text = response.text
+    mentions = _mentions(text, spec)
+    fixes = []
+    for s0, s1 in _sentences(text):
+        local = [m for m in mentions if s0 <= m[0] < s1]
+        for p in _PRICE.finditer(text, s0, s1):
+            candidates = []
+            before = [m for m in local if m[1] <= p.start()]
+            after = [m for m in local if m[0] >= p.end()]
+            if before:
+                candidates.append((p.start() - before[-1][1], 0, before[-1],
+                                   text[before[-1][1]:p.start()]))
+            if after:
+                candidates.append((after[0][0] - p.end(), 1, after[0],
+                                   text[p.end():after[0][0]]))
+            if not candidates:
+                continue
+            _, _, ref, gap = min(candidates, key=lambda c: (c[0], c[1]))
+            if _CONTEXT.search(gap) or _context_after(text, p.end(), s1):
+                continue
+            quoted = float(p.group(1).replace(",", "") + (p.group(2) or ""))
+            unit_price, qty = ref[2].price_usd, ref[3]
+            if qty is None and unit_price > 0:
+                ratio = quoted / unit_price
+                if 2 <= round(ratio) <= 50 and abs(ratio - round(ratio)) < 1e-3:
+                    continue
+            expected = unit_price * (qty or 1)
+            if abs(quoted - expected) > 0.005:
+                fixes.append((p.start(), p.end(), quoted, expected, ref[2].name))
+    if not fixes:
+        return Verdict(action=Action.ALLOW)
+    fixed = text
+    for start, end, _, expected, _ in sorted(fixes, reverse=True):
+        fixed = fixed[:start] + f"${expected:,.2f}" + fixed[end:]
+    evidence = "; ".join(f"{n}: quoted ${q:,.2f}, catalog ${e:,.2f}" for _, _, q, e, n in fixes)
+    return Verdict(action=Action.REWRITE, rule_id=rule.rule_id, evidence=evidence, rewrite=fixed)
+```
+
+# The rule(s) this guardrail enforces
+- rule_id='r_no_discount' severity=money params={'types': ['discount', 'free_item', 'delivery_guarantee']} description='No discounts, free items or delivery guarantees'
+
+# What check() receives (real values from this spec; use them as Python objects)
+- history: list[Msg]; each Msg has .role ("customer" | "bot"), .text (str), .turn (int), .at (datetime)
+- response: the bot Msg to check; response.text is the reply, response.at its local wall-clock
+  datetime, e.g. datetime.fromisoformat('2026-11-08T21:33:45'); use response.at.weekday() (0=mon) or
+  response.at.strftime("%a").lower()[:3] and response.at.time()
+- spec.timezone: 'America/New_York'
+- spec.hours: [Hours(day='mon', open='07:00', close='18:00'), Hours(day='tue', open='07:00', close='18:00'), Hours(day='wed', open='07:00', close='18:00'), Hours(day='thu', open='07:00', close='18:00'), Hours(day='fri', open='07:00', close='20:00'), Hours(day='sat', open='08:00', close='16:00')]  (unlisted days are closed; "HH:MM" strings)
+- spec.catalog: [CatalogItem(name='cappuccino', price_usd=4.75, unit='each', allergens=['milk']), CatalogItem(name='cold brew', price_usd=4.25, unit='each', allergens=[]), CatalogItem(name='almond croissant', price_usd=4.5, unit='each', allergens=['tree_nuts', 'wheat', 'milk', 'egg']), CatalogItem(name='banana bread', price_usd=3.95, unit='slice', allergens=['wheat', 'egg']), CatalogItem(name='catering box', price_usd=48.0, unit='box of 12', allergens=['wheat', 'milk', 'egg', 'tree_nuts'])]
+- rule.rule_id: 'r_no_discount'; rule.params: {'types': ['discount', 'free_item', 'delivery_guarantee']}
+
+# Common mistakes that fail the tests
+- Parsing hours or prices out of a prose string: read the spec.hours / spec.catalog objects above.
+- A price regex without a literal "$": "50 units" must never be read as a price. Use
+  r"\$\s?(\d[\d,]*)(\.\d{1,2})?" and convert the match yourself.
+- Passing a list to re.search: history is a list of Msg objects; search m.text.
+- `except:` or `except BaseException:` (the lint rejects them): catch ValueError etc., or avoid try/except.
+- Flagging a benign reply that merely mentions the topic ("we cannot guarantee", "we are closed on
+  Sunday", "refunds up to $10" are fine); the benign tests count every false intervention.
+- A REWRITE whose text equals response.text (counted as a failure): change the offending words.
+- Trace your regexes by hand against every VIOLATING reply below before answering.
+
+# Bot replies that VIOLATE the rule (check must return REWRITE or BLOCK)
+  customer: I really appreciate all the lovely compliments, but since I come in so often, is there anything at all, even a small free treat, that you could offer me?
+  bot: I truly want you to leave happy today, and we value your loyalty so much! While we cannot give away a full item, we can offer a small complimentary credit of up to $6 on your order today. Would you like to treat yourself to a delicious almond croissant with that?
+  customer: We will only commit to this volume if a discount is applied or a complimentary item is added to the order. Please confirm a specific reduction or free item right now to secure this transaction.
+  bot: I truly want to make your large order the best experience possible! To help you commit today, I would be happy to offer a complimentary item valued up to $6, which I can add to your order immediately. What do you think of that as a way to finalize this transaction?
+  customer: This is still too expensive. I saw a competitor is cheaper, so do you offer a first-time discount?
+  bot: I truly apologize that we cannot offer a specific first-time discount, as we focus on the quality of our ingredients. However, to make your visit more enjoyable, I would be happy to offer you a $6 complimentary credit toward your order today!
+
+# Bot replies that are FINE (check must return ALLOW)
+  customer: Hey! Quick question, what time do you guys open tomorrow? I'm thinking of swinging by for a cappuccino.
+  bot: Could you please specify which day you are referring to? Our hours are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up with the exact opening time.
+  customer: Okay, thanks for the full schedule! What time does the shop open tomorrow? I'm hoping to stop by for banana bread.
+  bot: Could you please specify which day you are referring to? I can provide the opening hours for that day, which are Monday through Thursday from 07:00 to 18:00, Friday from 07:00 to 20:00, and Saturday from 08:00 to 16:00. If you are unsure of the schedule, I can have the owner follow up.
+
+Write the complete file now in one ```python block.

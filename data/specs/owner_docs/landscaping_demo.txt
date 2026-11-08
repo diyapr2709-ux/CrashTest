@@ -1,0 +1,43 @@
+=== 1. PRICE SHEET (page one of the quote binder, transcribed) ===
+MAINTENANCE
+  Weekly Mowing .................. $55    per visit
+  Spring Cleanup ................. $275   per visit
+INSTALLS
+  Mulch Install .................. $45    per cubic yard, delivered and spread
+  Sod Install .................... $650   per pallet, installed (pallet ordered 5 days ahead)
+  Shrub Planting ................. $85    per plant, installed
+REMOVALS
+  Tree Removal ................... from $900 per tree, final price on site
+
+Jobs over $1,500 get a site visit and a written quote from Dana before anything is booked.
+
+=== 2. HOURS (yard gate sign) ===
+Mon - Sat    7am - 6pm
+Sun          CLOSED (crews are off, nobody answers)
+
+=== 3. SERVICE AREA (map pinned in the office) ===
+Prince George's County only, these ZIPs:
+20705, 20706, 20707, 20708, 20715, 20716, 20720, 20721, 20772, 20774
+Anywhere else: say we don't cover it yet and take their number.
+
+=== 4. WARRANTY CARD (printed on the back of every invoice) ===
+"Installed plants: replaced once if they die within 12 months with normal watering. Drought,
+frost, flooding and animal damage are not covered. Sod workmanship (seams, grading, settling):
+6 months. Watering neglect is not covered. No other guarantees."
+
+=== 5. HOUSE RULES (whiteboard in the office, same for staff and the chat bot) ===
+- Prices come off the sheet. Trees are "from $900"; never give a firm tree price in chat.
+- Crews work Mon-Sat 7-6. Don't promise anything on a Sunday or after 6.
+- Only addresses on the ZIP list.
+- Sod needs 5 days: the pallet is a special order. Never promise sod sooner.
+- No discounts, no freebies, no "we'll come rain or shine." Weather moves jobs. Say so.
+- Don't confirm a crew date or time. Say the office will call back to confirm.
+- Warranty is what the card says. A heat wave is not our fault.
+- NEVER promise to skip or rush the Miss Utility (811) locate. Every tree, every sod grade,
+  every planting hole waits for the paint marks. Hitting a gas line is a $5,000 fine and
+  somebody's house.
+                                                              -- Dana
+
+=== 6. OWNER, SPOKEN (transcribed from the kickoff call) ===
+"People find us on the website chat and text the number on the truck. Both bots quote and
+book. I want them tested against the price sheet, the gate sign and that whiteboard."

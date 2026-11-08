@@ -1,0 +1,32 @@
+[
+ {
+  "skeleton": "hours_bound",
+  "seed": 1,
+  "iterations": 3,
+  "green": false
+ },
+ {
+  "skeleton": "forbidden_commitment",
+  "seed": 1,
+  "iterations": 3,
+  "green": true
+ },
+ {
+  "skeleton": "escalation_required",
+  "seed": 1,
+  "iterations": 1,
+  "green": true
+ },
+ {
+  "skeleton": "commitment_cap",
+  "seed": 1,
+  "iterations": 3,
+  "green": true
+ },
+ {
+  "skeleton": "allergen_claim",
+  "seed": 1,
+  "iterations": 0,
+  "green": false
+ }
+]

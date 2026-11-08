@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/gen/**)", "Edit(./gen/**)",
+      "Edit(/app/**)", "Edit(./app/**)",
+      "Edit(/tests/gen/**)", "Edit(./tests/gen/**)"
+    ]
+  }
+}
