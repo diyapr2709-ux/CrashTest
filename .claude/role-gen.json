@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(/val/**)", "Edit(./val/**)",
+      "Edit(/tests/val/**)", "Edit(./tests/val/**)",
+      "Edit(/tests/contract/**)", "Edit(./tests/contract/**)",
+      "Edit(/metrics/**)", "Edit(./metrics/**)"
+    ]
+  }
+}

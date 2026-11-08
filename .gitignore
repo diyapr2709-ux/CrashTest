@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+holdout/
+dev_private/
+cache/llm/
+.claude/settings.local.json

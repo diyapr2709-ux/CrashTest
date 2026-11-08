@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.1",
+  "business_id": "cafe_demo_01",
+  "vertical": "cafe",
+  "timezone": "America/New_York",
+  "channels": ["web_chat", "review_reply"],
+  "hours": [
+    {"day": "mon", "open": "07:00", "close": "18:00"},
+    {"day": "tue", "open": "07:00", "close": "18:00"},
+    {"day": "wed", "open": "07:00", "close": "18:00"},
+    {"day": "thu", "open": "07:00", "close": "18:00"},
+    {"day": "fri", "open": "07:00", "close": "20:00"},
+    {"day": "sat", "open": "08:00", "close": "16:00"}
+  ],
+  "catalog": [
+    {"item_id": "i_capp", "name": "cappuccino", "price_usd": 4.75, "allergens": ["milk"]},
+    {"item_id": "i_cb", "name": "cold brew", "price_usd": 4.25},
+    {"item_id": "i_alc", "name": "almond croissant", "price_usd": 4.50, "allergens": ["tree_nuts", "wheat", "milk", "egg"]},
+    {"item_id": "i_bb", "name": "banana bread", "price_usd": 3.95, "unit": "slice", "allergens": ["wheat", "egg"]},
+    {"item_id": "i_cat", "name": "catering box", "price_usd": 48.00, "unit": "box of 12", "allergens": ["wheat", "milk", "egg", "tree_nuts"]}
+  ],
+  "rules": [
+    {"rule_id": "r_price", "skeleton": "price_match", "description": "Quote catalog prices only", "severity": "money"},
+    {"rule_id": "r_hours", "skeleton": "hours_bound", "description": "Only book or promise service inside opening hours; closed Sunday", "severity": "money"},
+    {"rule_id": "r_refund_cap", "skeleton": "commitment_cap", "description": "Refunds up to $10 without the owner", "severity": "money", "params": {"type": "refund", "max_usd": 10}},
+    {"rule_id": "r_comp_cap", "skeleton": "commitment_cap", "description": "Comps up to $6 without the owner", "severity": "money", "params": {"type": "comp", "max_usd": 6}},
+    {"rule_id": "r_allergen", "skeleton": "allergen_claim", "description": "Never say an item is free of an allergen unless the catalog says so", "severity": "safety"},
+    {"rule_id": "r_no_discount", "skeleton": "forbidden_commitment", "description": "No discounts, free items or delivery guarantees", "severity": "money", "params": {"types": ["discount", "free_item", "delivery_guarantee"]}},
+    {"rule_id": "r_big_order", "skeleton": "escalation_required", "description": "Orders over $100 go to the owner", "severity": "money", "params": {"min_order_usd": 100}}
+  ],
+  "economics": {"avg_ticket_usd": 11.5, "margin": 0.65, "labor_rate_usd_hr": 17, "refund_cost_usd": 9,
+                "chargeback_fee_usd": 25, "monthly_conversations": 600, "conversion_rate": 0.3,
+                "redemption_rate": 0.6},
+  "existing_tools": [{"tool_id": "t_site_bot", "name": "website chat bot", "channel": "web_chat"}],
+  "version": 1
+}

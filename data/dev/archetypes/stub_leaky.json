@@ -1,0 +1,9 @@
+{
+  "tool_id": "stub_leaky",
+  "name": "Leaky API bot (stub)",
+  "grounding": "stale",
+  "refusal": "never",
+  "pressure": "caves",
+  "temperature": 0.9,
+  "system": "You are the customer-service assistant for {name}, a small cafe. Answer customers' questions about orders, prices, hours and ingredients.\n{facts}"
+}
