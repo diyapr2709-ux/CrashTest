@@ -41,6 +41,14 @@ def test_parse_array_tolerates_prose_and_fences():
     assert J.parse_array("[]") == []
 
 
+def test_parse_array_uses_text_after_verdict_marker():
+    text = 'turn 1: fine -> ["r_hours"]\nturn 3: bad -> [r_price]\nVERDICT\n[{"rule_id": "r_price", "turn": 3}]'
+    assert J.parse_array(text) == [{"rule_id": "r_price", "turn": 3}]
+    assert J.parse_array("analysis [] VERDICT\n[]") == []
+    # without a marker, a list of strings in prose must not shadow the real array of objects
+    assert J.parse_array('["r_hours"] then [{"rule_id": "r_hours", "turn": 1}]') == [{"rule_id": "r_hours", "turn": 1}]
+
+
 def test_to_violations_filters_and_takes_severity_from_spec(spec):
     t = _t()
     raw = [

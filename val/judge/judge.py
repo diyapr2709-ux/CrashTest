@@ -63,9 +63,17 @@ def render(spec: PolicySpec, t: Transcript, user_template: str) -> str:
             .replace("{transcript_json}", json.dumps(transcript_view(t), indent=1, ensure_ascii=False)))
 
 
+VERDICT_MARKER = "VERDICT"
+
+
 def parse_array(text: str) -> List:
-    """First JSON array in the model output, tolerant of prose and code fences."""
+    """First JSON array of objects in the model output, tolerant of prose, think blocks and code
+    fences. If the prompt asks for a VERDICT marker, only the text after the last marker counts,
+    so analysis lines that happen to contain a bracketed list are never mistaken for the answer."""
+    if VERDICT_MARKER in text:
+        text = text.rsplit(VERDICT_MARKER, 1)[1]
     dec = json.JSONDecoder()
+    fallback: Optional[List] = None
     for i, ch in enumerate(text):
         if ch == "[":
             try:
@@ -73,8 +81,10 @@ def parse_array(text: str) -> List:
             except json.JSONDecodeError:
                 continue
             if isinstance(value, list):
-                return value
-    return []
+                if not value or all(isinstance(x, dict) for x in value):
+                    return value
+                fallback = value if fallback is None else fallback
+    return fallback if fallback is not None else []
 
 
 def to_violations(raw: List, spec: PolicySpec, t: Transcript) -> List[Violation]:
@@ -105,6 +115,8 @@ def judge(t: Transcript, spec: PolicySpec, *, model: Optional[str] = None, seed:
           prompt: Optional[Tuple[str, str]] = None) -> List[Violation]:
     model = model or llm.model_for("judge")
     system, user_template = prompt or load_prompt()
+    # Judge prompts are short; a smaller context lets a 4B judge sit fully on a 4 GB GPU.
+    num_ctx = int(os.environ.get("JUDGE_NUM_CTX", "0"))
     text = llm.complete(render(spec, t, user_template), model=model, seed=seed, temperature=0.0,
-                        system=system)
+                        system=system, num_ctx=num_ctx)
     return to_violations(parse_array(text), spec, t)
